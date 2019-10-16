@@ -2,6 +2,7 @@
 
 """Console script for python_autograph_utils."""
 import sys
+
 import click
 
 
