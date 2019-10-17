@@ -7,6 +7,7 @@ Welcome to Python Autograph Utilities's documentation!
 
    readme
    modules
+   contributing
    history
 
 Indices and tables
