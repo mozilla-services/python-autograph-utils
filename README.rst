@@ -26,7 +26,15 @@ A library to simplify use of Autograph
 Features
 --------
 
-* TODO
+SignatureVerifier
+=================
+
+The canonical implementation of certificate chain validation. Although
+some other implementations seem to exist (such as
+https://github.com/river2sea/X509Validation,
+https://github.com/alex/x509-validator, and
+https://github.com/openstack/cursive), all are marked as
+pre-production and/or needing work, so just do it ourselves.
 
 Credits
 -------
