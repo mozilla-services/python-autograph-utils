@@ -34,18 +34,14 @@ setup(
         "Programming Language :: Python :: 3.7",
     ],
     description="A library to simplify use of Autograph",
-    entry_points={
-        "console_scripts": ["python_autograph_utils=python_autograph_utils.cli:main"]
-    },
+    entry_points={"console_scripts": ["autograph_utils=autograph_utils.cli:main"]},
     install_requires=requirements,
     license="Apache Software License 2.0",
     long_description=readme + "\n\n" + history,
     include_package_data=True,
-    keywords="python_autograph_utils",
-    name="python_autograph_utils",
-    packages=find_packages(
-        include=["python_autograph_utils", "python_autograph_utils.*"]
-    ),
+    keywords="autograph_utils",
+    name="autograph_utils",
+    packages=find_packages(include=["autograph_utils", "autograph_utils.*"]),
     setup_requires=setup_requirements,
     test_suite="tests",
     tests_require=test_requirements,

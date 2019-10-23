@@ -3,8 +3,8 @@ Python Autograph Utilities
 ==========================
 
 
-.. image:: https://img.shields.io/pypi/v/python_autograph_utils.svg
-        :target: https://pypi.python.org/pypi/python_autograph_utils
+.. image:: https://img.shields.io/pypi/v/autograph_utils.svg
+        :target: https://pypi.python.org/pypi/autograph_utils
 
 .. image:: https://img.shields.io/travis/glasserc/python_autograph_utils.svg
         :target: https://travis-ci.org/glasserc/python_autograph_utils

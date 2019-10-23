@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-"""Tests for `python_autograph_utils` package."""
+"""Tests for `autograph_utils` package."""
 
 import os.path
 
@@ -10,8 +10,8 @@ import pytest
 from aioresponses import aioresponses
 from click.testing import CliRunner
 
-import python_autograph_utils
-from python_autograph_utils import SignatureVerifier, cli, decode_mozilla_hash
+import autograph_utils
+from autograph_utils import SignatureVerifier, cli, decode_mozilla_hash
 
 TESTS_BASE = os.path.dirname(__file__)
 
@@ -98,13 +98,13 @@ async def test_verify_signature(aiohttp_session, mock_with_x5u, cache):
 
 async def test_verify_signature_bad_base64(aiohttp_session, mock_with_x5u, cache):
     s = SignatureVerifier(aiohttp_session, cache, DEV_ROOT_HASH)
-    with pytest.raises(python_autograph_utils.WrongSignatureSize):
+    with pytest.raises(autograph_utils.WrongSignatureSize):
         await s.verify(SIGNED_DATA, SAMPLE_SIGNATURE[:-3], FAKE_CERT_URL)
 
 
 async def test_verify_signature_bad_numbers(aiohttp_session, mock_with_x5u, cache):
     s = SignatureVerifier(aiohttp_session, cache, DEV_ROOT_HASH)
-    with pytest.raises(python_autograph_utils.WrongSignatureSize):
+    with pytest.raises(autograph_utils.WrongSignatureSize):
         await s.verify(SIGNED_DATA, SAMPLE_SIGNATURE[:-4], FAKE_CERT_URL)
 
 
@@ -113,7 +113,7 @@ def test_command_line_interface():
     runner = CliRunner()
     result = runner.invoke(cli.main)
     assert result.exit_code == 0
-    assert "python_autograph_utils.cli.main" in result.output
+    assert "autograph_utils.cli.main" in result.output
     help_result = runner.invoke(cli.main, ["--help"])
     assert help_result.exit_code == 0
     assert "--help  Show this message and exit." in help_result.output
