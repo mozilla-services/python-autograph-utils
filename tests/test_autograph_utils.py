@@ -3,7 +3,9 @@
 
 """Tests for `autograph_utils` package."""
 
+import datetime
 import os.path
+from unittest import mock
 
 import aiohttp
 import pytest
@@ -66,6 +68,15 @@ def cache():
 
 
 @pytest.fixture
+def now_fixed():
+    with mock.patch("autograph_utils._now") as m:
+        # A common static time used in a lot of tests.
+        m.return_value = datetime.datetime(2019, 10, 23, 16, 16)
+        # Yield the mock so someone can change the time if they want
+        yield m
+
+
+@pytest.fixture
 async def aiohttp_session(loop):
     async with aiohttp.ClientSession() as s:
         yield s
@@ -75,26 +86,50 @@ def test_decode_mozilla_hash():
     assert decode_mozilla_hash("4C:35:B1:C3") == b"\x4c\x35\xb1\xc3"
 
 
-async def test_verify_x5u(aiohttp_session, mock_with_x5u, cache):
+async def test_verify_x5u(aiohttp_session, mock_with_x5u, cache, now_fixed):
     s = SignatureVerifier(aiohttp_session, cache, DEV_ROOT_HASH)
     await s.verify_x5u(FAKE_CERT_URL)
 
 
-async def test_verify_signature(aiohttp_session, mock_with_x5u, cache):
+async def test_verify_signature(aiohttp_session, mock_with_x5u, cache, now_fixed):
     s = SignatureVerifier(aiohttp_session, cache, DEV_ROOT_HASH)
     await s.verify(SIGNED_DATA, SAMPLE_SIGNATURE, FAKE_CERT_URL)
 
 
-async def test_verify_signature_bad_base64(aiohttp_session, mock_with_x5u, cache):
+async def test_verify_signature_bad_base64(
+    aiohttp_session, mock_with_x5u, cache, now_fixed
+):
     s = SignatureVerifier(aiohttp_session, cache, DEV_ROOT_HASH)
     with pytest.raises(autograph_utils.WrongSignatureSize):
         await s.verify(SIGNED_DATA, SAMPLE_SIGNATURE[:-3], FAKE_CERT_URL)
 
 
-async def test_verify_signature_bad_numbers(aiohttp_session, mock_with_x5u, cache):
+async def test_verify_signature_bad_numbers(
+    aiohttp_session, mock_with_x5u, cache, now_fixed
+):
     s = SignatureVerifier(aiohttp_session, cache, DEV_ROOT_HASH)
     with pytest.raises(autograph_utils.WrongSignatureSize):
         await s.verify(SIGNED_DATA, SAMPLE_SIGNATURE[:-4], FAKE_CERT_URL)
+
+
+async def test_verify_x5u_expired(aiohttp_session, mock_with_x5u, cache, now_fixed):
+    now_fixed.return_value = datetime.datetime(2022, 10, 23, 16, 16, 16)
+    s = SignatureVerifier(aiohttp_session, cache, DEV_ROOT_HASH)
+    with pytest.raises(autograph_utils.CertificateExpired) as excinfo:
+        await s.verify(SIGNED_DATA, SAMPLE_SIGNATURE, FAKE_CERT_URL)
+
+    assert (
+        excinfo.value.detail == "Certificate expired in the past on 2021-07-05 21:57:15"
+    )
+
+
+async def test_verify_x5u_too_soon(aiohttp_session, mock_with_x5u, cache, now_fixed):
+    now_fixed.return_value = datetime.datetime(2010, 10, 23, 16, 16, 16)
+    s = SignatureVerifier(aiohttp_session, cache, DEV_ROOT_HASH)
+    with pytest.raises(autograph_utils.CertificateNotYetValid) as excinfo:
+        await s.verify(SIGNED_DATA, SAMPLE_SIGNATURE, FAKE_CERT_URL)
+
+    assert excinfo.value.detail == "Certificate is not valid until 2016-07-06 21:57:15"
 
 
 def test_command_line_interface():

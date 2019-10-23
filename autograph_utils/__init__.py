@@ -11,6 +11,7 @@ import base64
 import binascii
 import re
 from abc import ABC
+from datetime import datetime
 
 import cryptography
 import ecdsa.util
@@ -69,6 +70,24 @@ class CertificateParseError(BadCertificate):
     @property
     def detail(self):
         return f"Could not parse certificate: {self.extra}"
+
+
+class CertificateNotYetValid(BadCertificate):
+    def __init__(self, not_before):
+        self.not_before = not_before
+
+    @property
+    def detail(self):
+        return f"Certificate is not valid until {self.not_before}"
+
+
+class CertificateExpired(BadCertificate):
+    def __init__(self, not_after):
+        self.not_after = not_after
+
+    @property
+    def detail(self):
+        return f"Certificate expired in the past on {self.not_after}"
 
 
 class BadSignature(Exception):
@@ -167,7 +186,18 @@ class SignatureVerifier:
             for pem in pems
         ]
 
+        now = _now()
         for cert in certs:
+            if cert.not_valid_before > cert.not_valid_after:
+                raise BadCertificate(
+                    f"not_before ({cert.not_valid_before}) after "
+                    f"not_after ({cert.not_valid_after})"
+                )
+            if now < cert.not_valid_before:
+                raise CertificateNotYetValid(cert.not_valid_before)
+            if now > cert.not_valid_after:
+                raise CertificateExpired(cert.not_valid_after)
+
             print(cert)
 
         root_hash = certs[-1].fingerprint(SHA256())
@@ -222,3 +252,11 @@ def decode_mozilla_hash(s):
     b'\x4c\x35\xb1\xc3')
     """
     return bytes.fromhex(s.replace(":", " "))
+
+
+def _now(self):
+    """Mockable function to get "now".
+
+    :returns: naive datetime representing a UTC timestamp
+    """
+    return datetime.utcnow()
