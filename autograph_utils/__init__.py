@@ -110,8 +110,7 @@ class SignatureVerifier:
                 raise WrongSignatureSize(
                     "Base64 encoded signature was not a multiple of 4"
                 )
-            else:
-                raise
+            raise
 
         try:
             r, s = ecdsa.util.sigdecode_string(
