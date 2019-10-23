@@ -11,7 +11,7 @@ from aioresponses import aioresponses
 from click.testing import CliRunner
 
 import autograph_utils
-from autograph_utils import SignatureVerifier, cli, decode_mozilla_hash
+from autograph_utils import MemoryCache, SignatureVerifier, cli, decode_mozilla_hash
 
 TESTS_BASE = os.path.dirname(__file__)
 
@@ -58,17 +58,6 @@ def mock_aioresponses():
 def mock_with_x5u(mock_aioresponses):
     mock_aioresponses.get(FAKE_CERT_URL, status=200, body=CERT_CHAIN)
     return mock_aioresponses
-
-
-class MemoryCache:
-    def __init__(self):
-        self.data = {}
-
-    def get(self, url):
-        return self.data.get(url)
-
-    def set(self, url, result):
-        self.data[url] = result
 
 
 @pytest.fixture

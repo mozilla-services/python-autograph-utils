@@ -31,6 +31,27 @@ class Cache(ABC):
         pass
 
 
+class MemoryCache:
+    """A simple Cache implementation that just uses a dictionary.
+
+    This cache does not expire data and can therefore grow without
+    bound. This may make it vulnerable to a denial-of-service attack.
+
+    """
+
+    def __init__(self):
+        self.data = {}
+
+    def get(self, url):
+        return self.data.get(url)
+
+    def set(self, url, result):
+        self.data[url] = result
+
+
+Cache.register(MemoryCache)
+
+
 BASE64_WRONG_LENGTH_RE = re.compile(
     r"Invalid base64-encoded string: number of data characters \(\d+\) cannot "
     r"be [123] more than a multiple of 4"
