@@ -20,6 +20,7 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import ec as cryptography_ec
 from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
 from cryptography.hazmat.primitives.hashes import SHA256, SHA384
+from cryptography.x509.oid import NameOID
 
 
 class Cache(ABC):
@@ -51,6 +52,38 @@ class MemoryCache:
 
 
 Cache.register(MemoryCache)
+
+
+class SubjectNameCheck(ABC):
+    """An interface for predicates that verify the subject name."""
+
+    def check(self, subject_name):
+        pass
+
+    def describe(self):
+        pass
+
+
+class EndsWith:
+    def __init__(self, domain):
+        self.domain = domain
+
+    def check(self, subject_name):
+        return subject_name.endswith(self.domain)
+
+    def describe(self):
+        return f"ends with {self.domain!r}"
+
+
+class ExactMatch:
+    def __init__(self, domain):
+        self.domain = domain
+
+    def check(self, subject_name):
+        return subject_name == self.domain
+
+    def describe(self):
+        return f"matches exactly {self.domain!r}"
 
 
 BASE64_WRONG_LENGTH_RE = re.compile(
@@ -95,6 +128,19 @@ class CertificateExpired(BadCertificate):
         return f"Certificate expired in the past on {self.not_after}"
 
 
+class CertificateHasWrongSubject(BadCertificate):
+    def __init__(self, actual, check):
+        self.check = check
+        self.actual = actual
+
+    @property
+    def detail(self):
+        return (
+            f"Certificate does not have the expected subject. "
+            f"Got {self.actual!r}, checking for {self.check.describe()}"
+        )
+
+
 class BadSignature(Exception):
     detail = "Unknown signature problem"
 
@@ -120,13 +166,19 @@ class SignatureVerifier:
     :params bytes root_hash: The expected hash for the first
         certificate in a chain.  This should not be encoded in any
         way. Hashes can be decoded using decode_mozilla_hash.
+    :params SubjectNameCheck subject_name_check: Predicate to use to
+        validate cert subject names. Defaults to
+        EndsWith(".content-signature.mozilla.org").
 
     """
 
-    def __init__(self, session, cache, root_hash):
+    def __init__(self, session, cache, root_hash, subject_name_check=None):
         self.session = session
         self.cache = cache
         self.root_hash = root_hash
+        self.subject_name_check = subject_name_check or EndsWith(
+            ".content-signature.mozilla.org"
+        )
 
     algorithm = cryptography_ec.ECDSA(SHA384())
 
@@ -203,7 +255,13 @@ class SignatureVerifier:
             if now > cert.not_valid_after:
                 raise CertificateExpired(cert.not_valid_after)
 
-            print(cert)
+        leaf_subject_name = (
+            certs[0].subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value
+        )
+        if not self.subject_name_check.check(leaf_subject_name):
+            raise CertificateHasWrongSubject(
+                leaf_subject_name, check=self.subject_name_check
+            )
 
         root_hash = certs[-1].fingerprint(SHA256())
         assert root_hash == self.root_hash

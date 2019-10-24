@@ -15,7 +15,13 @@ from click.testing import CliRunner
 from cryptography.hazmat.backends import default_backend
 
 import autograph_utils
-from autograph_utils import MemoryCache, SignatureVerifier, decode_mozilla_hash, main
+from autograph_utils import (
+    ExactMatch,
+    MemoryCache,
+    SignatureVerifier,
+    decode_mozilla_hash,
+    main,
+)
 
 TESTS_BASE = os.path.dirname(__file__)
 
@@ -155,6 +161,37 @@ async def test_verify_x5u_screwy_dates(
     assert excinfo.value.detail == (
         "Bad certificate: not_before (2021-07-05 21:57:15) "
         "after not_after (2016-07-06 21:57:15)"
+    )
+
+
+async def test_verify_x5u_name_exact_match(
+    aiohttp_session, mock_with_x5u, cache, now_fixed
+):
+    s = SignatureVerifier(
+        aiohttp_session,
+        cache,
+        DEV_ROOT_HASH,
+        subject_name_check=ExactMatch("normandy.content-signature.mozilla.org"),
+    )
+    await s.verify(SIGNED_DATA, SAMPLE_SIGNATURE, FAKE_CERT_URL)
+
+
+async def test_verify_x5u_name_exact_doesnt_match(
+    aiohttp_session, mock_with_x5u, cache, now_fixed
+):
+    s = SignatureVerifier(
+        aiohttp_session,
+        cache,
+        DEV_ROOT_HASH,
+        subject_name_check=ExactMatch("remote-settings.content-signature.mozilla.org"),
+    )
+    with pytest.raises(autograph_utils.CertificateHasWrongSubject) as excinfo:
+        await s.verify(SIGNED_DATA, SAMPLE_SIGNATURE, FAKE_CERT_URL)
+
+    assert excinfo.value.detail == (
+        "Certificate does not have the expected subject. "
+        "Got 'normandy.content-signature.mozilla.org', "
+        "checking for matches exactly 'remote-settings.content-signature.mozilla.org'"
     )
 
 
