@@ -13,7 +13,7 @@ from aioresponses import aioresponses
 from click.testing import CliRunner
 
 import autograph_utils
-from autograph_utils import MemoryCache, SignatureVerifier, cli, decode_mozilla_hash
+from autograph_utils import MemoryCache, SignatureVerifier, decode_mozilla_hash, main
 
 TESTS_BASE = os.path.dirname(__file__)
 
@@ -135,9 +135,9 @@ async def test_verify_x5u_too_soon(aiohttp_session, mock_with_x5u, cache, now_fi
 def test_command_line_interface():
     """Test the CLI."""
     runner = CliRunner()
-    result = runner.invoke(cli.main)
+    result = runner.invoke(main.main)
     assert result.exit_code == 0
     assert "autograph_utils.cli.main" in result.output
-    help_result = runner.invoke(cli.main, ["--help"])
+    help_result = runner.invoke(main.main, ["--help"])
     assert help_result.exit_code == 0
     assert "--help  Show this message and exit." in help_result.output
