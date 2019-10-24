@@ -8,9 +8,11 @@ import os.path
 from unittest import mock
 
 import aiohttp
+import cryptography.x509
 import pytest
 from aioresponses import aioresponses
 from click.testing import CliRunner
+from cryptography.hazmat.backends import default_backend
 
 import autograph_utils
 from autograph_utils import MemoryCache, SignatureVerifier, decode_mozilla_hash, main
@@ -42,7 +44,9 @@ FAKE_CERT_URL = (
     "https://example.com/normandy.content-signature.mozilla.org-20210705.dev.chain"
 )
 
-CERT_CHAIN = open(CERT_PATH).read()
+CERT_CHAIN = open(CERT_PATH, "rb").read()
+
+CERT_LIST = autograph_utils.split_pem(CERT_CHAIN)
 
 DEV_ROOT_HASH = decode_mozilla_hash(
     "4C:35:B1:C3:E3:12:D9:55:E7:78:ED:D0:A7:E7:8A:38:"
@@ -130,6 +134,28 @@ async def test_verify_x5u_too_soon(aiohttp_session, mock_with_x5u, cache, now_fi
         await s.verify(SIGNED_DATA, SAMPLE_SIGNATURE, FAKE_CERT_URL)
 
     assert excinfo.value.detail == "Certificate is not valid until 2016-07-06 21:57:15"
+
+
+async def test_verify_x5u_screwy_dates(
+    aiohttp_session, mock_with_x5u, cache, now_fixed
+):
+    now_fixed.return_value = datetime.datetime(2010, 10, 23, 16, 16, 16)
+    s = SignatureVerifier(aiohttp_session, cache, DEV_ROOT_HASH)
+    leaf_cert = cryptography.x509.load_pem_x509_certificate(
+        CERT_LIST[0], backend=default_backend()
+    )
+    bad_cert = mock.Mock(spec=leaf_cert)
+    bad_cert.not_valid_before = leaf_cert.not_valid_after
+    bad_cert.not_valid_after = leaf_cert.not_valid_before
+    with mock.patch("autograph_utils.x509.load_pem_x509_certificate") as x509:
+        x509.return_value = bad_cert
+        with pytest.raises(autograph_utils.BadCertificate) as excinfo:
+            await s.verify(SIGNED_DATA, SAMPLE_SIGNATURE, FAKE_CERT_URL)
+
+    assert excinfo.value.detail == (
+        "Bad certificate: not_before (2021-07-05 21:57:15) "
+        "after not_after (2016-07-06 21:57:15)"
+    )
 
 
 def test_command_line_interface():

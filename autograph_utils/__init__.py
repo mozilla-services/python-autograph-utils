@@ -60,7 +60,12 @@ BASE64_WRONG_LENGTH_RE = re.compile(
 
 
 class BadCertificate(Exception):
-    detail = "Unknown certificate problem"
+    def __init__(self, extra):
+        self.extra = extra
+
+    @property
+    def detail(self):
+        return f"Bad certificate: {self.extra}"
 
 
 class CertificateParseError(BadCertificate):
