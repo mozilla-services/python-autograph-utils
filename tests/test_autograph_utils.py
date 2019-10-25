@@ -101,6 +101,29 @@ async def test_verify_x5u(aiohttp_session, mock_with_x5u, cache, now_fixed):
     await s.verify_x5u(FAKE_CERT_URL)
 
 
+async def test_verify_x5u_caches_success(
+    aiohttp_session, mock_with_x5u, cache, now_fixed
+):
+    with mock.patch.object(cache, "set") as set_mock:
+        s = SignatureVerifier(aiohttp_session, cache, DEV_ROOT_HASH)
+        await s.verify_x5u(FAKE_CERT_URL)
+
+        assert len(set_mock.call_args_list) == 1
+        args, kwargs = set_mock.call_args_list[0]
+        assert args[0] == FAKE_CERT_URL
+        assert isinstance(args[1], cryptography.x509.Certificate)
+        assert kwargs == {}
+
+
+async def test_verify_x5u_returns_cache(
+    aiohttp_session, mock_with_x5u, cache, now_fixed
+):
+    with mock.patch.object(cache, "get") as get_mock:
+        s = SignatureVerifier(aiohttp_session, cache, DEV_ROOT_HASH)
+        res = await s.verify_x5u(FAKE_CERT_URL)
+        assert res == get_mock.return_value
+
+
 async def test_verify_signature(aiohttp_session, mock_with_x5u, cache, now_fixed):
     s = SignatureVerifier(aiohttp_session, cache, DEV_ROOT_HASH)
     await s.verify(SIGNED_DATA, SAMPLE_SIGNATURE, FAKE_CERT_URL)
