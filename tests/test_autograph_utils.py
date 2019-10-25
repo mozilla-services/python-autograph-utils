@@ -216,6 +216,26 @@ async def test_verify_x5u_name_exact_doesnt_match(
     )
 
 
+async def test_verify_wrong_root_hash(aiohttp_session, mock_with_x5u, cache, now_fixed):
+    wrong_root_hash = DEV_ROOT_HASH[:-1] + b"\x03"
+    s = SignatureVerifier(
+        aiohttp_session,
+        cache,
+        wrong_root_hash,
+        subject_name_check=ExactMatch("remote-settings.content-signature.mozilla.org"),
+    )
+    with pytest.raises(autograph_utils.CertificateHasWrongRoot) as excinfo:
+        await s.verify_x5u(FAKE_CERT_URL)
+
+    actual = "4c35b1c3e312d955e778edd0a7e78a388304ef01bffa0329b2469f3cc5ec3604"
+    expected = actual[:-1] + "3"
+
+    assert excinfo.value.detail == (
+        "Certificate is not based on expected root hash. "
+        f"Got '{actual}' expected '{expected}'"
+    )
+
+
 def test_command_line_interface():
     """Test the CLI."""
     runner = CliRunner()

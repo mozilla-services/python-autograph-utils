@@ -128,6 +128,19 @@ class CertificateExpired(BadCertificate):
         return f"Certificate expired on {self.not_after}"
 
 
+class CertificateHasWrongRoot(BadCertificate):
+    def __init__(self, *, expected, actual):
+        self.expected = binascii.hexlify(expected).decode()
+        self.actual = binascii.hexlify(actual).decode()
+
+    @property
+    def detail(self):
+        return (
+            "Certificate is not based on expected root hash. "
+            f"Got '{self.actual}' expected '{self.expected}'"
+        )
+
+
 class CertificateHasWrongSubject(BadCertificate):
     def __init__(self, actual, check_description):
         self.check_description = check_description
@@ -255,6 +268,12 @@ class SignatureVerifier:
             if now > cert.not_valid_after:
                 raise CertificateExpired(cert.not_valid_after)
 
+        # Verify chain of trust.
+        chain = certs[::-1]
+        root_hash = chain[0].fingerprint(SHA256())
+        if root_hash != self.root_hash:
+            raise CertificateHasWrongRoot(expected=self.root_hash, actual=root_hash)
+
         leaf_subject_name = (
             certs[0].subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value
         )
@@ -262,9 +281,6 @@ class SignatureVerifier:
             raise CertificateHasWrongSubject(
                 leaf_subject_name, check_description=self.subject_name_check.describe()
             )
-
-        root_hash = certs[-1].fingerprint(SHA256())
-        assert root_hash == self.root_hash
 
         res = certs[0]
         self.cache.set(url, res)
