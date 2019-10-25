@@ -236,6 +236,25 @@ async def test_verify_wrong_root_hash(aiohttp_session, mock_with_x5u, cache, now
     )
 
 
+async def test_verify_broken_chain(
+    aiohttp_session, mock_aioresponses, cache, now_fixed
+):
+    # Drop next-to-last cert in cert list
+    broken_chain = CERT_LIST[:1] + CERT_LIST[2:]
+    mock_aioresponses.get(FAKE_CERT_URL, status=200, body=b"\n".join(broken_chain))
+    s = SignatureVerifier(aiohttp_session, cache, DEV_ROOT_HASH)
+    with pytest.raises(autograph_utils.CertificateChainBroken) as excinfo:
+        await s.verify_x5u(FAKE_CERT_URL)
+
+    assert excinfo.value.detail.startswith("Certificate chain is not continuous. ")
+    assert excinfo.value.previous_cert == cryptography.x509.load_pem_x509_certificate(
+        CERT_LIST[2], backend=default_backend()
+    )
+    assert excinfo.value.next_cert == cryptography.x509.load_pem_x509_certificate(
+        CERT_LIST[0], backend=default_backend()
+    )
+
+
 def test_command_line_interface():
     """Test the CLI."""
     runner = CliRunner()

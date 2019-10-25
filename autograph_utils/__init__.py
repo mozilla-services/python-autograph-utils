@@ -18,6 +18,7 @@ import ecdsa.util
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import ec as cryptography_ec
+from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
 from cryptography.hazmat.primitives.hashes import SHA256, SHA384
 from cryptography.x509.oid import NameOID
@@ -154,6 +155,19 @@ class CertificateHasWrongSubject(BadCertificate):
         )
 
 
+class CertificateChainBroken(BadCertificate):
+    def __init__(self, previous_cert, next_cert):
+        self.previous_cert = previous_cert
+        self.next_cert = next_cert
+
+    @property
+    def detail(self):
+        return (
+            "Certificate chain is not continuous. "
+            f"Expected {self.previous_cert!r} to sign {self.next_cert!r}"
+        )
+
+
 class BadSignature(Exception):
     detail = "Unknown signature problem"
 
@@ -273,6 +287,19 @@ class SignatureVerifier:
         root_hash = chain[0].fingerprint(SHA256())
         if root_hash != self.root_hash:
             raise CertificateHasWrongRoot(expected=self.root_hash, actual=root_hash)
+
+        current_cert = chain[0]
+        for next_cert in chain[1:]:
+            try:
+                current_cert.public_key().verify(
+                    next_cert.signature,
+                    next_cert.tbs_certificate_bytes,
+                    padding.PKCS1v15(),
+                    next_cert.signature_hash_algorithm,
+                )
+            except cryptography.exceptions.InvalidSignature:
+                raise CertificateChainBroken(current_cert, next_cert)
+            current_cert = next_cert
 
         leaf_subject_name = (
             certs[0].subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value
