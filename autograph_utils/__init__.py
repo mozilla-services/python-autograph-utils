@@ -129,15 +129,15 @@ class CertificateExpired(BadCertificate):
 
 
 class CertificateHasWrongSubject(BadCertificate):
-    def __init__(self, actual, check):
-        self.check = check
+    def __init__(self, actual, check_description):
+        self.check_description = check_description
         self.actual = actual
 
     @property
     def detail(self):
         return (
             f"Certificate does not have the expected subject. "
-            f"Got {self.actual!r}, checking for {self.check.describe()}"
+            f"Got {self.actual!r}, checking for {self.check_description}"
         )
 
 
@@ -260,7 +260,7 @@ class SignatureVerifier:
         )
         if not self.subject_name_check.check(leaf_subject_name):
             raise CertificateHasWrongSubject(
-                leaf_subject_name, check=self.subject_name_check
+                leaf_subject_name, check_description=self.subject_name_check.describe()
             )
 
         root_hash = certs[-1].fingerprint(SHA256())
