@@ -125,7 +125,7 @@ class CertificateExpired(BadCertificate):
 
     @property
     def detail(self):
-        return f"Certificate expired in the past on {self.not_after}"
+        return f"Certificate expired on {self.not_after}"
 
 
 class CertificateHasWrongSubject(BadCertificate):

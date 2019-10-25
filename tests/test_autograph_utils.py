@@ -128,9 +128,7 @@ async def test_verify_x5u_expired(aiohttp_session, mock_with_x5u, cache, now_fix
     with pytest.raises(autograph_utils.CertificateExpired) as excinfo:
         await s.verify(SIGNED_DATA, SAMPLE_SIGNATURE, FAKE_CERT_URL)
 
-    assert (
-        excinfo.value.detail == "Certificate expired in the past on 2021-07-05 21:57:15"
-    )
+    assert excinfo.value.detail == "Certificate expired on 2021-07-05 21:57:15"
 
 
 async def test_verify_x5u_too_soon(aiohttp_session, mock_with_x5u, cache, now_fixed):
