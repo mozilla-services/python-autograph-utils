@@ -19,6 +19,7 @@ from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import ec as cryptography_ec
 from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
 from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
 from cryptography.hazmat.primitives.hashes import SHA256, SHA384
 from cryptography.x509.oid import NameOID
@@ -168,6 +169,18 @@ class CertificateChainBroken(BadCertificate):
         )
 
 
+class CertificateUnknownPublicKey(BadCertificate):
+    """An internal error indicating that support for some type of key is missing."""
+
+    def __init__(self, cert, key):
+        self.cert = cert
+        self.key = key
+
+    @property
+    def detail(self):
+        return f"Unknown public key type for {self.cert!r}: {self.key!r}"
+
+
 class CertificateLeafHasWrongKeyUsage(BadCertificate):
     def __init__(self, cert, key_usage):
         self.cert = cert
@@ -303,15 +316,8 @@ class SignatureVerifier:
 
         current_cert = chain[0]
         for next_cert in chain[1:]:
-            try:
-                current_cert.public_key().verify(
-                    next_cert.signature,
-                    next_cert.tbs_certificate_bytes,
-                    padding.PKCS1v15(),
-                    next_cert.signature_hash_algorithm,
-                )
-            except cryptography.exceptions.InvalidSignature:
-                raise CertificateChainBroken(current_cert, next_cert)
+            self._verify_cert_link(current_cert, next_cert)
+
             current_cert = next_cert
 
         leaf_subject_name = (
@@ -334,6 +340,33 @@ class SignatureVerifier:
         res = certs[0]
         self.cache.set(url, res)
         return res
+
+    def _verify_cert_link(self, current_cert, next_cert):
+        """Verify a single link in a cert chain.
+
+        """
+        key = current_cert.public_key()
+        if isinstance(key, RSAPublicKey):
+            try:
+                key.verify(
+                    next_cert.signature,
+                    next_cert.tbs_certificate_bytes,
+                    padding.PKCS1v15(),
+                    next_cert.signature_hash_algorithm,
+                )
+            except cryptography.exceptions.InvalidSignature:
+                raise CertificateChainBroken(current_cert, next_cert)
+        elif isinstance(key, cryptography_ec.EllipticCurvePublicKey):
+            try:
+                key.verify(
+                    next_cert.signature,
+                    next_cert.tbs_certificate_bytes,
+                    cryptography_ec.ECDSA(next_cert.signature_hash_algorithm),
+                )
+            except cryptography.exceptions.InvalidSignature:
+                raise CertificateChainBroken(current_cert, next_cert)
+        else:
+            raise CertificateUnknownPublicKey(current_cert, key)
 
 
 def split_pem(s):

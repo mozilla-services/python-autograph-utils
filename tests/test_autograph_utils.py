@@ -59,6 +59,16 @@ DEV_ROOT_HASH = decode_mozilla_hash(
     + "83:04:EF:01:BF:FA:03:29:B2:46:9F:3C:C5:EC:36:04"
 )
 
+STAGE_CERT_PATH = os.path.join(
+    TESTS_BASE, "normandy.content-signature.mozilla.org-2019-12-04-18-15-23.chain"
+)
+STAGE_CERT_CHAIN = open(STAGE_CERT_PATH, "rb").read()
+STAGE_CERT_LIST = autograph_utils.split_pem(STAGE_CERT_CHAIN)
+STAGE_ROOT_HASH = decode_mozilla_hash(
+    "DB:74:CE:58:E4:F9:D0:9E:E0:42:36:BE:6C:C5:C4:F6:"
+    + "6A:E7:74:7D:C0:21:42:7A:03:BC:2F:57:0C:8B:9B:90"
+)
+
 
 @pytest.fixture
 def mock_aioresponses():
@@ -105,6 +115,7 @@ def mock_cert(real_cert):
     mock_cert.signature_hash_algorithm = real_cert.signature_hash_algorithm
     mock_cert.subject = real_cert.subject
     mock_cert.extensions = real_cert.extensions
+    mock_cert.public_key = real_cert.public_key
 
     return mock_cert
 
@@ -270,6 +281,36 @@ async def test_verify_broken_chain(
     assert excinfo.value.next_cert == cryptography.x509.load_pem_x509_certificate(
         CERT_LIST[0], backend=default_backend()
     )
+
+
+async def test_verify_stage_cert_chain(
+    aiohttp_session, mock_aioresponses, cache, now_fixed
+):
+    mock_aioresponses.get(FAKE_CERT_URL, status=200, body=STAGE_CERT_CHAIN)
+    s = SignatureVerifier(aiohttp_session, cache, STAGE_ROOT_HASH)
+    await s.verify_x5u(FAKE_CERT_URL)
+
+
+async def test_unknown_key(aiohttp_session, mock_with_x5u, cache, now_fixed):
+    certs = [
+        cryptography.x509.load_pem_x509_certificate(pem, backend=default_backend())
+        for pem in CERT_LIST
+    ]
+
+    # Change public_key for an intermediate cert
+    real_intermediate = certs[1]
+    mock_intermediate = mock_cert(real_intermediate)
+    mock_intermediate.public_key = mock.Mock()
+    certs[1] = mock_intermediate
+
+    with mock.patch("cryptography.x509.load_pem_x509_certificate") as load_cert_mock:
+        load_cert_mock.side_effect = lambda *args, **kwargs: certs.pop(0)
+        s = SignatureVerifier(aiohttp_session, cache, DEV_ROOT_HASH)
+        with pytest.raises(autograph_utils.CertificateUnknownPublicKey) as excinfo:
+            await s.verify_x5u(FAKE_CERT_URL)
+
+    assert excinfo.value.cert == mock_intermediate
+    assert excinfo.value.key == mock_intermediate.public_key()
 
 
 async def test_verify_leaf_code_signing(
