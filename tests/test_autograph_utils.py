@@ -120,6 +120,21 @@ def mock_cert(real_cert):
     return mock_cert
 
 
+def mock_cert_extension(cert, extension_cls, value):
+    old_extensions = cert.extensions
+
+    def get_extension_for_class_mock(query_cls):
+        if query_cls == extension_cls:
+            m = mock.Mock()
+            m.value = value
+            return m
+
+        return old_extensions.get_extension_for_class(query_cls)
+
+    cert.extensions = mock.Mock()
+    cert.extensions.get_extension_for_class = get_extension_for_class_mock
+
+
 def test_decode_mozilla_hash():
     assert decode_mozilla_hash("4C:35:B1:C3") == b"\x4c\x35\xb1\xc3"
 
@@ -355,21 +370,12 @@ async def test_verify_name_constraints_excludes(
     ).value
 
     # Reverse meaning of constraints.
-    def get_extension_mock(x509_cls):
-        if x509_cls == cryptography.x509.NameConstraints:
-            reversed = mock.Mock()
-            reversed.permitted_subtrees = real_constraints.excluded_subtrees
-            reversed.excluded_subtrees = real_constraints.permitted_subtrees
-
-            m = mock.Mock()
-            m.value = reversed
-            return m
-
-        return real_intermediate.get_extension_for_class(x509_cls)
+    reversed = mock.Mock()
+    reversed.permitted_subtrees = real_constraints.excluded_subtrees
+    reversed.excluded_subtrees = real_constraints.permitted_subtrees
 
     intermediate = mock_cert(real_intermediate)
-    intermediate.extensions = mock.Mock()
-    intermediate.extensions.get_extension_for_class.side_effect = get_extension_mock
+    mock_cert_extension(intermediate, cryptography.x509.NameConstraints, reversed)
     certs[1] = intermediate
 
     leaf = certs[0]
@@ -396,21 +402,11 @@ async def test_verify_leaf_code_signing(
     # Change extended_key_usage for leaf cert
     real_leaf = certs[0]
     mock_leaf = mock_cert(real_leaf)
-
-    fake_uses = mock.Mock()
-    fake_uses.value = [
+    fake_uses = [
         cryptography.x509.oid.ExtendedKeyUsageOID.CODE_SIGNING,
         cryptography.x509.oid.ExtendedKeyUsageOID.TIME_STAMPING,
     ]
-
-    def get_extensions(x509_cls):
-        if x509_cls == cryptography.x509.ExtendedKeyUsage:
-            return fake_uses
-
-        return real_leaf.extensions.get_extension_for_class(x509_cls)
-
-    mock_leaf.extensions = mock.Mock()
-    mock_leaf.extensions.get_extension_for_class.side_effect = get_extensions
+    mock_cert_extension(mock_leaf, cryptography.x509.ExtendedKeyUsage, fake_uses)
     certs[0] = mock_leaf
 
     with mock.patch("cryptography.x509.load_pem_x509_certificate") as load_cert_mock:
@@ -424,7 +420,7 @@ async def test_verify_leaf_code_signing(
         "Code Signing. "
     )
     assert excinfo.value.cert == mock_leaf
-    assert excinfo.value.key_usage == fake_uses.value
+    assert excinfo.value.key_usage == fake_uses
 
 
 def test_command_line_interface():
