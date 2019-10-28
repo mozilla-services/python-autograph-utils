@@ -92,6 +92,23 @@ async def aiohttp_session(loop):
         yield s
 
 
+def mock_cert(real_cert):
+    """Utility function to create a mock of a cert that has all the same
+    data but can have fields overridden.
+
+    """
+    mock_cert = mock.create_autospec(spec=real_cert)
+    mock_cert.not_valid_before = real_cert.not_valid_before
+    mock_cert.not_valid_after = real_cert.not_valid_after
+    mock_cert.signature = real_cert.signature
+    mock_cert.tbs_certificate_bytes = real_cert.tbs_certificate_bytes
+    mock_cert.signature_hash_algorithm = real_cert.signature_hash_algorithm
+    mock_cert.subject = real_cert.subject
+    mock_cert.extensions = real_cert.extensions
+
+    return mock_cert
+
+
 def test_decode_mozilla_hash():
     assert decode_mozilla_hash("4C:35:B1:C3") == b"\x4c\x35\xb1\xc3"
 
@@ -253,6 +270,48 @@ async def test_verify_broken_chain(
     assert excinfo.value.next_cert == cryptography.x509.load_pem_x509_certificate(
         CERT_LIST[0], backend=default_backend()
     )
+
+
+async def test_verify_leaf_code_signing(
+    aiohttp_session, mock_with_x5u, cache, now_fixed
+):
+    certs = [
+        cryptography.x509.load_pem_x509_certificate(pem, backend=default_backend())
+        for pem in CERT_LIST
+    ]
+
+    # Change extended_key_usage for leaf cert
+    real_leaf = certs[0]
+    mock_leaf = mock_cert(real_leaf)
+
+    fake_uses = mock.Mock()
+    fake_uses.value = [
+        cryptography.x509.oid.ExtendedKeyUsageOID.CODE_SIGNING,
+        cryptography.x509.oid.ExtendedKeyUsageOID.TIME_STAMPING,
+    ]
+
+    def get_extensions(x509_cls):
+        if x509_cls == cryptography.x509.ExtendedKeyUsage:
+            return fake_uses
+
+        return real_leaf.extensions.get_extension_for_class(x509_cls)
+
+    mock_leaf.extensions = mock.Mock()
+    mock_leaf.extensions.get_extension_for_class.side_effect = get_extensions
+    certs[0] = mock_leaf
+
+    with mock.patch("cryptography.x509.load_pem_x509_certificate") as load_cert_mock:
+        load_cert_mock.side_effect = lambda *args, **kwargs: certs.pop(0)
+        s = SignatureVerifier(aiohttp_session, cache, DEV_ROOT_HASH)
+        with pytest.raises(autograph_utils.CertificateLeafHasWrongKeyUsage) as excinfo:
+            await s.verify_x5u(FAKE_CERT_URL)
+
+    assert excinfo.value.detail.startswith(
+        f"Leaf certificate {mock_leaf!r} should have extended key usage of just "
+        "Code Signing. "
+    )
+    assert excinfo.value.cert == mock_leaf
+    assert excinfo.value.key_usage == fake_uses.value
 
 
 def test_command_line_interface():

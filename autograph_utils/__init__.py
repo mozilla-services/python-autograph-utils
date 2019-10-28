@@ -168,6 +168,19 @@ class CertificateChainBroken(BadCertificate):
         )
 
 
+class CertificateLeafHasWrongKeyUsage(BadCertificate):
+    def __init__(self, cert, key_usage):
+        self.cert = cert
+        self.key_usage = key_usage
+
+    @property
+    def detail(self):
+        return (
+            f"Leaf certificate {self.cert!r} should have extended key usage of just "
+            f"Code Signing. Got {self.key_usage!r}"
+        )
+
+
 class BadSignature(Exception):
     detail = "Unknown signature problem"
 
@@ -308,6 +321,15 @@ class SignatureVerifier:
             raise CertificateHasWrongSubject(
                 leaf_subject_name, check_description=self.subject_name_check.describe()
             )
+
+        code_signing = cryptography.x509.oid.ExtendedKeyUsageOID.CODE_SIGNING
+        extended_key_usage = (
+            certs[0]
+            .extensions.get_extension_for_class(cryptography.x509.ExtendedKeyUsage)
+            .value
+        )
+        if list(extended_key_usage) != [code_signing]:
+            raise CertificateLeafHasWrongKeyUsage(certs[0], extended_key_usage)
 
         res = certs[0]
         self.cache.set(url, res)
