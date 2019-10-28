@@ -266,7 +266,9 @@ class SignatureVerifier:
         root_hash = certs[-1].fingerprint(SHA256())
         assert root_hash == self.root_hash
 
-        return certs[0]
+        res = certs[0]
+        self.cache.set(url, res)
+        return res
 
 
 def split_pem(s):
