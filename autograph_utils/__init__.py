@@ -181,6 +181,20 @@ class CertificateUnknownPublicKey(BadCertificate):
         return f"Unknown public key type for {self.cert!r}: {self.key!r}"
 
 
+class CertificateChainNameNotPermitted(BadCertificate):
+    def __init__(self, permitted_subtrees, current, next):
+        self.permitted_subtrees = permitted_subtrees
+        self.current = current
+        self.next = next
+
+    @property
+    def detail(self):
+        return (
+            f"Certificate name of {self.next!r} does not match the permitted names "
+            f"for {self.current!r}: {self.permitted_subtrees!r}"
+        )
+
+
 class CertificateLeafHasWrongKeyUsage(BadCertificate):
     def __init__(self, cert, key_usage):
         self.cert = cert
@@ -191,6 +205,20 @@ class CertificateLeafHasWrongKeyUsage(BadCertificate):
         return (
             f"Leaf certificate {self.cert!r} should have extended key usage of just "
             f"Code Signing. Got {self.key_usage!r}"
+        )
+
+
+class CertificateChainNameExcluded(BadCertificate):
+    def __init__(self, excluded_subtrees, current, next):
+        self.excluded_subtrees = excluded_subtrees
+        self.current = current
+        self.next = next
+
+    @property
+    def detail(self):
+        return (
+            f"Certificate name of {self.next!r} matches the excluded names "
+            f"for {self.current!r}: {self.excluded_subtrees!r}"
         )
 
 
@@ -317,6 +345,7 @@ class SignatureVerifier:
         current_cert = chain[0]
         for next_cert in chain[1:]:
             self._verify_cert_link(current_cert, next_cert)
+            self._check_name_constraints(current_cert, next_cert)
 
             current_cert = next_cert
 
@@ -367,6 +396,51 @@ class SignatureVerifier:
                 raise CertificateChainBroken(current_cert, next_cert)
         else:
             raise CertificateUnknownPublicKey(current_cert, key)
+
+    def _check_name_constraints(self, current_cert, next_cert):
+        try:
+            nc = current_cert.extensions.get_extension_for_class(
+                cryptography.x509.NameConstraints
+            ).value
+        except x509.ExtensionNotFound:
+            return
+
+        name = next_cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value
+        if nc.permitted_subtrees:
+            for constraint in nc.permitted_subtrees:
+                if _name_constraint_matches(name, constraint):
+                    break
+            else:
+                raise CertificateChainNameNotPermitted(
+                    nc.permitted_subtrees, current=current_cert, next=next_cert
+                )
+
+        excluded_subtrees = nc.excluded_subtrees or []
+
+        for constraint in excluded_subtrees:
+            if _name_constraint_matches(name, constraint):
+                raise CertificateChainNameExcluded(
+                    nc.excluded_subtrees, current=current_cert, next=next_cert
+                )
+
+
+def _name_constraint_matches(hostname, name_constraint):
+    """Check if a name matches a constraint.
+
+    Taken from
+    https://github.com/alex/x509-validator/blob/master/validator.py.
+
+    """
+    if not isinstance(name_constraint, x509.DNSName):
+        return False
+    constraint_hostname = name_constraint.value
+
+    if constraint_hostname.startswith("."):
+        return hostname.endswith(constraint_hostname)
+    else:
+        return hostname == constraint_hostname or hostname.endswith(
+            "." + constraint_hostname
+        )
 
 
 def split_pem(s):

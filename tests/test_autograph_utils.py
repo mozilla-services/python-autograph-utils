@@ -313,6 +313,78 @@ async def test_unknown_key(aiohttp_session, mock_with_x5u, cache, now_fixed):
     assert excinfo.value.key == mock_intermediate.public_key()
 
 
+async def test_verify_name_constraints_raises(
+    aiohttp_session, mock_with_x5u, cache, now_fixed
+):
+    certs = [
+        cryptography.x509.load_pem_x509_certificate(pem, backend=default_backend())
+        for pem in STAGE_CERT_LIST
+    ]
+    # Intermediate cert has the name constraint.
+    intermediate = certs[1]
+    # Change name of leaf cert.
+    mock_leaf = mock_cert(certs[0])
+    fake_name = mock.Mock()
+    fake_name.value = "bazinga.allizom.org"
+    mock_leaf.subject = mock.Mock()
+    mock_leaf.subject.get_attributes_for_oid.return_value = [fake_name]
+    certs[0] = mock_leaf
+
+    with mock.patch("cryptography.x509.load_pem_x509_certificate") as load_cert_mock:
+        load_cert_mock.side_effect = lambda *args, **kwargs: certs.pop(0)
+        s = SignatureVerifier(aiohttp_session, cache, STAGE_ROOT_HASH)
+        with pytest.raises(autograph_utils.CertificateChainNameNotPermitted) as excinfo:
+            await s.verify_x5u(FAKE_CERT_URL)
+
+    assert " does not match the permitted names " in excinfo.value.detail
+    assert excinfo.value.current == intermediate
+    assert excinfo.value.next == mock_leaf
+
+
+async def test_verify_name_constraints_excludes(
+    aiohttp_session, mock_with_x5u, cache, now_fixed
+):
+    certs = [
+        cryptography.x509.load_pem_x509_certificate(pem, backend=default_backend())
+        for pem in STAGE_CERT_LIST
+    ]
+    # Intermediate cert has the name constraint.
+    real_intermediate = certs[1]
+    real_constraints = real_intermediate.extensions.get_extension_for_class(
+        cryptography.x509.NameConstraints
+    ).value
+
+    # Reverse meaning of constraints.
+    def get_extension_mock(x509_cls):
+        if x509_cls == cryptography.x509.NameConstraints:
+            reversed = mock.Mock()
+            reversed.permitted_subtrees = real_constraints.excluded_subtrees
+            reversed.excluded_subtrees = real_constraints.permitted_subtrees
+
+            m = mock.Mock()
+            m.value = reversed
+            return m
+
+        return real_intermediate.get_extension_for_class(x509_cls)
+
+    intermediate = mock_cert(real_intermediate)
+    intermediate.extensions = mock.Mock()
+    intermediate.extensions.get_extension_for_class.side_effect = get_extension_mock
+    certs[1] = intermediate
+
+    leaf = certs[0]
+
+    with mock.patch("cryptography.x509.load_pem_x509_certificate") as load_cert_mock:
+        load_cert_mock.side_effect = lambda *args, **kwargs: certs.pop(0)
+        s = SignatureVerifier(aiohttp_session, cache, STAGE_ROOT_HASH)
+        with pytest.raises(autograph_utils.CertificateChainNameExcluded) as excinfo:
+            await s.verify_x5u(FAKE_CERT_URL)
+
+    assert " matches the excluded names " in excinfo.value.detail
+    assert excinfo.value.current == intermediate
+    assert excinfo.value.next == leaf
+
+
 async def test_verify_leaf_code_signing(
     aiohttp_session, mock_with_x5u, cache, now_fixed
 ):
