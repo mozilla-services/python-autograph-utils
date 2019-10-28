@@ -391,6 +391,60 @@ async def test_verify_name_constraints_excludes(
     assert excinfo.value.next == leaf
 
 
+async def test_verify_basic_constraints_must_have_ca(
+    aiohttp_session, mock_with_x5u, cache, now_fixed
+):
+    certs = [
+        cryptography.x509.load_pem_x509_certificate(pem, backend=default_backend())
+        for pem in STAGE_CERT_LIST
+    ]
+    real_intermediate = certs[1]
+    intermediate = mock_cert(real_intermediate)
+    basic_mock = mock.Mock()
+    basic_mock.ca = False
+    mock_cert_extension(intermediate, cryptography.x509.BasicConstraints, basic_mock)
+    certs[1] = intermediate
+
+    with mock.patch("cryptography.x509.load_pem_x509_certificate") as load_cert_mock:
+        load_cert_mock.side_effect = lambda *args, **kwargs: certs.pop(0)
+        s = SignatureVerifier(aiohttp_session, cache, STAGE_ROOT_HASH)
+        with pytest.raises(autograph_utils.CertificateCannotSign) as excinfo:
+            await s.verify_x5u(FAKE_CERT_URL)
+
+    assert excinfo.value.detail.startswith(
+        "Certificate cannot be used for signing because "
+    )
+    assert excinfo.value.cert == intermediate
+    assert excinfo.value.extra == "ca is false"
+
+
+async def test_verify_basic_constraints_must_have_cert_signing(
+    aiohttp_session, mock_with_x5u, cache, now_fixed
+):
+    certs = [
+        cryptography.x509.load_pem_x509_certificate(pem, backend=default_backend())
+        for pem in STAGE_CERT_LIST
+    ]
+    real_intermediate = certs[1]
+    intermediate = mock_cert(real_intermediate)
+    uses_mock = mock.Mock()
+    uses_mock.key_cert_sign = False
+    mock_cert_extension(intermediate, cryptography.x509.KeyUsage, uses_mock)
+    certs[1] = intermediate
+
+    with mock.patch("cryptography.x509.load_pem_x509_certificate") as load_cert_mock:
+        load_cert_mock.side_effect = lambda *args, **kwargs: certs.pop(0)
+        s = SignatureVerifier(aiohttp_session, cache, STAGE_ROOT_HASH)
+        with pytest.raises(autograph_utils.CertificateCannotSign) as excinfo:
+            await s.verify_x5u(FAKE_CERT_URL)
+
+    assert excinfo.value.detail.startswith(
+        "Certificate cannot be used for signing because "
+    )
+    assert excinfo.value.cert == intermediate
+    assert excinfo.value.extra == "key usage is incomplete"
+
+
 async def test_verify_leaf_code_signing(
     aiohttp_session, mock_with_x5u, cache, now_fixed
 ):

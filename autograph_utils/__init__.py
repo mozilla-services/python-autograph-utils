@@ -195,6 +195,25 @@ class CertificateChainNameNotPermitted(BadCertificate):
         )
 
 
+class CertificateCannotSign(BadCertificate):
+    """For intermediate/root certificates that do not have the proper
+    metainformation bits saying that they can be used to sign
+    signatures.
+
+    """
+
+    def __init__(self, cert, extra):
+        self.cert = cert
+        self.extra = extra
+
+    @property
+    def detail(self):
+        return (
+            "Certificate cannot be used for signing "
+            f"because {self.extra}: {self.cert!r}"
+        )
+
+
 class CertificateLeafHasWrongKeyUsage(BadCertificate):
     def __init__(self, cert, key_usage):
         self.cert = cert
@@ -344,6 +363,7 @@ class SignatureVerifier:
 
         current_cert = chain[0]
         for next_cert in chain[1:]:
+            self._check_can_sign_other_certs(current_cert)
             self._verify_cert_link(current_cert, next_cert)
             self._check_name_constraints(current_cert, next_cert)
 
@@ -422,6 +442,20 @@ class SignatureVerifier:
                 raise CertificateChainNameExcluded(
                     nc.excluded_subtrees, current=current_cert, next=next_cert
                 )
+
+    def _check_can_sign_other_certs(self, cert):
+        basic = cert.extensions.get_extension_for_class(
+            cryptography.x509.BasicConstraints
+        ).value
+        if not basic.ca:
+            raise CertificateCannotSign(cert, "ca is false")
+
+        usage = cert.extensions.get_extension_for_class(
+            cryptography.x509.KeyUsage
+        ).value
+        usage_is_ok = usage.key_cert_sign and usage.crl_sign
+        if not usage_is_ok:
+            raise CertificateCannotSign(cert, "key usage is incomplete")
 
 
 def _name_constraint_matches(hostname, name_constraint):
