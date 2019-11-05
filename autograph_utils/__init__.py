@@ -139,7 +139,7 @@ class CertificateHasWrongRoot(BadCertificate):
     def detail(self):
         return (
             "Certificate is not based on expected root hash. "
-            f"Got '{self.actual}' expected '{self.expected}'"
+            f"Got {self.actual!r} expected {self.expected!r}"
         )
 
 
