@@ -197,8 +197,7 @@ class CertificateChainNameNotPermitted(BadCertificate):
 
 class CertificateCannotSign(BadCertificate):
     """For intermediate/root certificates that do not have the proper
-    metainformation bits saying that they can be used to sign
-    signatures.
+    metadata bits saying that they can be used to sign signatures.
 
     """
 
