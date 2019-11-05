@@ -422,6 +422,8 @@ class SignatureVerifier:
                 cryptography.x509.NameConstraints
             ).value
         except x509.ExtensionNotFound:
+            # No name constraints. This cert is therefore OK to sign
+            # any name whatsoever.
             return
 
         name = next_cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value
