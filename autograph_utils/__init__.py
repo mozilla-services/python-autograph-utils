@@ -169,7 +169,7 @@ class CertificateChainBroken(BadCertificate):
         )
 
 
-class CertificateUnknownPublicKey(BadCertificate):
+class CertificateUnsupportedKeyType(BadCertificate):
     """An internal error indicating that support for some type of key is missing."""
 
     def __init__(self, cert, key):
@@ -415,7 +415,7 @@ class SignatureVerifier:
             except cryptography.exceptions.InvalidSignature:
                 raise CertificateChainBroken(current_cert, next_cert)
         else:
-            raise CertificateUnknownPublicKey(current_cert, key)
+            raise CertificateUnsupportedKeyType(current_cert, key)
 
     def _check_name_constraints(self, current_cert, next_cert):
         try:

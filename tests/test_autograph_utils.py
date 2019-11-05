@@ -321,7 +321,7 @@ async def test_unknown_key(aiohttp_session, mock_with_x5u, cache, now_fixed):
     with mock.patch("cryptography.x509.load_pem_x509_certificate") as load_cert_mock:
         load_cert_mock.side_effect = lambda *args, **kwargs: certs.pop(0)
         s = SignatureVerifier(aiohttp_session, cache, DEV_ROOT_HASH)
-        with pytest.raises(autograph_utils.CertificateUnknownPublicKey) as excinfo:
+        with pytest.raises(autograph_utils.CertificateUnsupportedKeyType) as excinfo:
             await s.verify_x5u(FAKE_CERT_URL)
 
     assert excinfo.value.cert == mock_intermediate
