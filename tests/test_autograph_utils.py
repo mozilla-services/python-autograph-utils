@@ -91,7 +91,9 @@ def cache():
 def now_fixed():
     with mock.patch("autograph_utils._now") as m:
         # A common static time used in a lot of tests.
-        m.return_value = datetime.datetime(2019, 10, 23, 16, 16)
+        m.return_value = datetime.datetime(
+            2019, 10, 23, 16, 16, tzinfo=datetime.datetime.utc
+        )
         # Yield the mock so someone can change the time if they want
         yield m
 

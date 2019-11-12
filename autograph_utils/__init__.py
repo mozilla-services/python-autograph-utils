@@ -11,7 +11,7 @@ import base64
 import binascii
 import re
 from abc import ABC
-from datetime import datetime
+from datetime import datetime, timezone
 
 import cryptography
 import ecdsa.util
@@ -349,9 +349,9 @@ class SignatureVerifier:
                     f"not_before ({cert.not_valid_before}) after "
                     f"not_after ({cert.not_valid_after})"
                 )
-            if now < cert.not_valid_before:
+            if now < cert.not_valid_before.replace(tzinfo=timezone.utc):
                 raise CertificateNotYetValid(cert.not_valid_before)
-            if now > cert.not_valid_after:
+            if now > cert.not_valid_after.replace(tzinfo=timezone.utc):
                 raise CertificateExpired(cert.not_valid_after)
 
         # Verify chain of trust.
@@ -529,6 +529,6 @@ def decode_mozilla_hash(s):
 def _now(self):
     """Mockable function to get "now".
 
-    :returns: naive datetime representing a UTC timestamp
+    :returns: offset-aware datetime representing a UTC timestamp
     """
-    return datetime.utcnow()
+    return datetime.now(timezone.utc)
