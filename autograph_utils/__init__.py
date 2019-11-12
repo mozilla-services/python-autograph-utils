@@ -526,7 +526,7 @@ def decode_mozilla_hash(s):
     return bytes.fromhex(s.replace(":", " "))
 
 
-def _now(self):
+def _now():
     """Mockable function to get "now".
 
     :returns: naive datetime representing a UTC timestamp
