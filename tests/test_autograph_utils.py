@@ -59,6 +59,16 @@ DEV_ROOT_HASH = decode_mozilla_hash(
     + "83:04:EF:01:BF:FA:03:29:B2:46:9F:3C:C5:EC:36:04"
 )
 
+STAGE_CERT_PATH = os.path.join(
+    TESTS_BASE, "normandy.content-signature.mozilla.org-2019-12-04-18-15-23.chain"
+)
+STAGE_CERT_CHAIN = open(STAGE_CERT_PATH, "rb").read()
+STAGE_CERT_LIST = autograph_utils.split_pem(STAGE_CERT_CHAIN)
+STAGE_ROOT_HASH = decode_mozilla_hash(
+    "DB:74:CE:58:E4:F9:D0:9E:E0:42:36:BE:6C:C5:C4:F6:"
+    + "6A:E7:74:7D:C0:21:42:7A:03:BC:2F:57:0C:8B:9B:90"
+)
+
 
 @pytest.fixture
 def mock_aioresponses():
@@ -90,6 +100,39 @@ def now_fixed():
 async def aiohttp_session(loop):
     async with aiohttp.ClientSession() as s:
         yield s
+
+
+def mock_cert(real_cert):
+    """Utility function to create a mock of a cert that has all the same
+    data but can have fields overridden.
+
+    """
+    mock_cert = mock.create_autospec(spec=real_cert)
+    mock_cert.not_valid_before = real_cert.not_valid_before
+    mock_cert.not_valid_after = real_cert.not_valid_after
+    mock_cert.signature = real_cert.signature
+    mock_cert.tbs_certificate_bytes = real_cert.tbs_certificate_bytes
+    mock_cert.signature_hash_algorithm = real_cert.signature_hash_algorithm
+    mock_cert.subject = real_cert.subject
+    mock_cert.extensions = real_cert.extensions
+    mock_cert.public_key = real_cert.public_key
+
+    return mock_cert
+
+
+def mock_cert_extension(cert, extension_cls, value):
+    old_extensions = cert.extensions
+
+    def get_extension_for_class_mock(query_cls):
+        if query_cls == extension_cls:
+            m = mock.Mock()
+            m.value = value
+            return m
+
+        return old_extensions.get_extension_for_class(query_cls)
+
+    cert.extensions = mock.Mock()
+    cert.extensions.get_extension_for_class = get_extension_for_class_mock
 
 
 def test_decode_mozilla_hash():
@@ -214,6 +257,224 @@ async def test_verify_x5u_name_exact_doesnt_match(
         "Got 'normandy.content-signature.mozilla.org', "
         "checking for matches exactly 'remote-settings.content-signature.mozilla.org'"
     )
+
+
+async def test_verify_wrong_root_hash(aiohttp_session, mock_with_x5u, cache, now_fixed):
+    wrong_root_hash = DEV_ROOT_HASH[:-1] + b"\x03"
+    s = SignatureVerifier(
+        aiohttp_session,
+        cache,
+        wrong_root_hash,
+        subject_name_check=ExactMatch("remote-settings.content-signature.mozilla.org"),
+    )
+    with pytest.raises(autograph_utils.CertificateHasWrongRoot) as excinfo:
+        await s.verify_x5u(FAKE_CERT_URL)
+
+    actual = "4c35b1c3e312d955e778edd0a7e78a388304ef01bffa0329b2469f3cc5ec3604"
+    expected = actual[:-1] + "3"
+
+    assert excinfo.value.detail == (
+        "Certificate is not based on expected root hash. "
+        f"Got '{actual}' expected '{expected}'"
+    )
+
+
+async def test_verify_broken_chain(
+    aiohttp_session, mock_aioresponses, cache, now_fixed
+):
+    # Drop next-to-last cert in cert list
+    broken_chain = CERT_LIST[:1] + CERT_LIST[2:]
+    mock_aioresponses.get(FAKE_CERT_URL, status=200, body=b"\n".join(broken_chain))
+    s = SignatureVerifier(aiohttp_session, cache, DEV_ROOT_HASH)
+    with pytest.raises(autograph_utils.CertificateChainBroken) as excinfo:
+        await s.verify_x5u(FAKE_CERT_URL)
+
+    assert excinfo.value.detail.startswith("Certificate chain is not continuous. ")
+    assert excinfo.value.previous_cert == cryptography.x509.load_pem_x509_certificate(
+        CERT_LIST[2], backend=default_backend()
+    )
+    assert excinfo.value.next_cert == cryptography.x509.load_pem_x509_certificate(
+        CERT_LIST[0], backend=default_backend()
+    )
+
+
+async def test_verify_stage_cert_chain(
+    aiohttp_session, mock_aioresponses, cache, now_fixed
+):
+    mock_aioresponses.get(FAKE_CERT_URL, status=200, body=STAGE_CERT_CHAIN)
+    s = SignatureVerifier(aiohttp_session, cache, STAGE_ROOT_HASH)
+    await s.verify_x5u(FAKE_CERT_URL)
+
+
+async def test_unknown_key(aiohttp_session, mock_with_x5u, cache, now_fixed):
+    certs = [
+        cryptography.x509.load_pem_x509_certificate(pem, backend=default_backend())
+        for pem in CERT_LIST
+    ]
+
+    # Change public_key for an intermediate cert
+    real_intermediate = certs[1]
+    mock_intermediate = mock_cert(real_intermediate)
+    mock_intermediate.public_key = mock.Mock()
+    certs[1] = mock_intermediate
+
+    with mock.patch("cryptography.x509.load_pem_x509_certificate") as load_cert_mock:
+        load_cert_mock.side_effect = lambda *args, **kwargs: certs.pop(0)
+        s = SignatureVerifier(aiohttp_session, cache, DEV_ROOT_HASH)
+        with pytest.raises(autograph_utils.CertificateUnsupportedKeyType) as excinfo:
+            await s.verify_x5u(FAKE_CERT_URL)
+
+    assert excinfo.value.cert == mock_intermediate
+    assert excinfo.value.key == mock_intermediate.public_key()
+
+
+async def test_verify_name_constraints_raises(
+    aiohttp_session, mock_with_x5u, cache, now_fixed
+):
+    certs = [
+        cryptography.x509.load_pem_x509_certificate(pem, backend=default_backend())
+        for pem in STAGE_CERT_LIST
+    ]
+    # Intermediate cert has the name constraint.
+    intermediate = certs[1]
+    # Change name of leaf cert.
+    mock_leaf = mock_cert(certs[0])
+    fake_name = mock.Mock()
+    fake_name.value = "bazinga.allizom.org"
+    mock_leaf.subject = mock.Mock()
+    mock_leaf.subject.get_attributes_for_oid.return_value = [fake_name]
+    certs[0] = mock_leaf
+
+    with mock.patch("cryptography.x509.load_pem_x509_certificate") as load_cert_mock:
+        load_cert_mock.side_effect = lambda *args, **kwargs: certs.pop(0)
+        s = SignatureVerifier(aiohttp_session, cache, STAGE_ROOT_HASH)
+        with pytest.raises(autograph_utils.CertificateChainNameNotPermitted) as excinfo:
+            await s.verify_x5u(FAKE_CERT_URL)
+
+    assert " does not match the permitted names " in excinfo.value.detail
+    assert excinfo.value.current == intermediate
+    assert excinfo.value.next == mock_leaf
+
+
+async def test_verify_name_constraints_excludes(
+    aiohttp_session, mock_with_x5u, cache, now_fixed
+):
+    certs = [
+        cryptography.x509.load_pem_x509_certificate(pem, backend=default_backend())
+        for pem in STAGE_CERT_LIST
+    ]
+    # Intermediate cert has the name constraint.
+    real_intermediate = certs[1]
+    real_constraints = real_intermediate.extensions.get_extension_for_class(
+        cryptography.x509.NameConstraints
+    ).value
+
+    # Reverse meaning of constraints.
+    reversed = mock.Mock()
+    reversed.permitted_subtrees = real_constraints.excluded_subtrees
+    reversed.excluded_subtrees = real_constraints.permitted_subtrees
+
+    intermediate = mock_cert(real_intermediate)
+    mock_cert_extension(intermediate, cryptography.x509.NameConstraints, reversed)
+    certs[1] = intermediate
+
+    leaf = certs[0]
+
+    with mock.patch("cryptography.x509.load_pem_x509_certificate") as load_cert_mock:
+        load_cert_mock.side_effect = lambda *args, **kwargs: certs.pop(0)
+        s = SignatureVerifier(aiohttp_session, cache, STAGE_ROOT_HASH)
+        with pytest.raises(autograph_utils.CertificateChainNameExcluded) as excinfo:
+            await s.verify_x5u(FAKE_CERT_URL)
+
+    assert " matches the excluded names " in excinfo.value.detail
+    assert excinfo.value.current == intermediate
+    assert excinfo.value.next == leaf
+
+
+async def test_verify_basic_constraints_must_have_ca(
+    aiohttp_session, mock_with_x5u, cache, now_fixed
+):
+    certs = [
+        cryptography.x509.load_pem_x509_certificate(pem, backend=default_backend())
+        for pem in STAGE_CERT_LIST
+    ]
+    real_intermediate = certs[1]
+    intermediate = mock_cert(real_intermediate)
+    basic_mock = mock.Mock()
+    basic_mock.ca = False
+    mock_cert_extension(intermediate, cryptography.x509.BasicConstraints, basic_mock)
+    certs[1] = intermediate
+
+    with mock.patch("cryptography.x509.load_pem_x509_certificate") as load_cert_mock:
+        load_cert_mock.side_effect = lambda *args, **kwargs: certs.pop(0)
+        s = SignatureVerifier(aiohttp_session, cache, STAGE_ROOT_HASH)
+        with pytest.raises(autograph_utils.CertificateCannotSign) as excinfo:
+            await s.verify_x5u(FAKE_CERT_URL)
+
+    assert excinfo.value.detail.startswith(
+        "Certificate cannot be used for signing because "
+    )
+    assert excinfo.value.cert == intermediate
+    assert excinfo.value.extra == "ca is false"
+
+
+async def test_verify_basic_constraints_must_have_cert_signing(
+    aiohttp_session, mock_with_x5u, cache, now_fixed
+):
+    certs = [
+        cryptography.x509.load_pem_x509_certificate(pem, backend=default_backend())
+        for pem in STAGE_CERT_LIST
+    ]
+    real_intermediate = certs[1]
+    intermediate = mock_cert(real_intermediate)
+    uses_mock = mock.Mock()
+    uses_mock.key_cert_sign = False
+    mock_cert_extension(intermediate, cryptography.x509.KeyUsage, uses_mock)
+    certs[1] = intermediate
+
+    with mock.patch("cryptography.x509.load_pem_x509_certificate") as load_cert_mock:
+        load_cert_mock.side_effect = lambda *args, **kwargs: certs.pop(0)
+        s = SignatureVerifier(aiohttp_session, cache, STAGE_ROOT_HASH)
+        with pytest.raises(autograph_utils.CertificateCannotSign) as excinfo:
+            await s.verify_x5u(FAKE_CERT_URL)
+
+    assert excinfo.value.detail.startswith(
+        "Certificate cannot be used for signing because "
+    )
+    assert excinfo.value.cert == intermediate
+    assert excinfo.value.extra == "key usage is incomplete"
+
+
+async def test_verify_leaf_code_signing(
+    aiohttp_session, mock_with_x5u, cache, now_fixed
+):
+    certs = [
+        cryptography.x509.load_pem_x509_certificate(pem, backend=default_backend())
+        for pem in CERT_LIST
+    ]
+
+    # Change extended_key_usage for leaf cert
+    real_leaf = certs[0]
+    mock_leaf = mock_cert(real_leaf)
+    fake_uses = [
+        cryptography.x509.oid.ExtendedKeyUsageOID.CODE_SIGNING,
+        cryptography.x509.oid.ExtendedKeyUsageOID.TIME_STAMPING,
+    ]
+    mock_cert_extension(mock_leaf, cryptography.x509.ExtendedKeyUsage, fake_uses)
+    certs[0] = mock_leaf
+
+    with mock.patch("cryptography.x509.load_pem_x509_certificate") as load_cert_mock:
+        load_cert_mock.side_effect = lambda *args, **kwargs: certs.pop(0)
+        s = SignatureVerifier(aiohttp_session, cache, DEV_ROOT_HASH)
+        with pytest.raises(autograph_utils.CertificateLeafHasWrongKeyUsage) as excinfo:
+            await s.verify_x5u(FAKE_CERT_URL)
+
+    assert excinfo.value.detail.startswith(
+        f"Leaf certificate {mock_leaf!r} should have extended key usage of just "
+        "Code Signing. "
+    )
+    assert excinfo.value.cert == mock_leaf
+    assert excinfo.value.key_usage == fake_uses
 
 
 def test_command_line_interface():

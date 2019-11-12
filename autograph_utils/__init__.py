@@ -18,6 +18,8 @@ import ecdsa.util
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import ec as cryptography_ec
+from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
 from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
 from cryptography.hazmat.primitives.hashes import SHA256, SHA384
 from cryptography.x509.oid import NameOID
@@ -128,6 +130,19 @@ class CertificateExpired(BadCertificate):
         return f"Certificate expired on {self.not_after}"
 
 
+class CertificateHasWrongRoot(BadCertificate):
+    def __init__(self, *, expected, actual):
+        self.expected = binascii.hexlify(expected).decode()
+        self.actual = binascii.hexlify(actual).decode()
+
+    @property
+    def detail(self):
+        return (
+            "Certificate is not based on expected root hash. "
+            f"Got {self.actual!r} expected {self.expected!r}"
+        )
+
+
 class CertificateHasWrongSubject(BadCertificate):
     def __init__(self, actual, check_description):
         self.check_description = check_description
@@ -138,6 +153,90 @@ class CertificateHasWrongSubject(BadCertificate):
         return (
             f"Certificate does not have the expected subject. "
             f"Got {self.actual!r}, checking for {self.check_description}"
+        )
+
+
+class CertificateChainBroken(BadCertificate):
+    def __init__(self, previous_cert, next_cert):
+        self.previous_cert = previous_cert
+        self.next_cert = next_cert
+
+    @property
+    def detail(self):
+        return (
+            "Certificate chain is not continuous. "
+            f"Expected {self.previous_cert!r} to sign {self.next_cert!r}"
+        )
+
+
+class CertificateUnsupportedKeyType(BadCertificate):
+    """An internal error indicating that support for some type of key is missing."""
+
+    def __init__(self, cert, key):
+        self.cert = cert
+        self.key = key
+
+    @property
+    def detail(self):
+        return f"Unknown public key type for {self.cert!r}: {self.key!r}"
+
+
+class CertificateChainNameNotPermitted(BadCertificate):
+    def __init__(self, permitted_subtrees, current, next):
+        self.permitted_subtrees = permitted_subtrees
+        self.current = current
+        self.next = next
+
+    @property
+    def detail(self):
+        return (
+            f"Certificate name of {self.next!r} does not match the permitted names "
+            f"for {self.current!r}: {self.permitted_subtrees!r}"
+        )
+
+
+class CertificateCannotSign(BadCertificate):
+    """For intermediate/root certificates that do not have the proper
+    metadata bits saying that they can be used to sign signatures.
+
+    """
+
+    def __init__(self, cert, extra):
+        self.cert = cert
+        self.extra = extra
+
+    @property
+    def detail(self):
+        return (
+            "Certificate cannot be used for signing "
+            f"because {self.extra}: {self.cert!r}"
+        )
+
+
+class CertificateLeafHasWrongKeyUsage(BadCertificate):
+    def __init__(self, cert, key_usage):
+        self.cert = cert
+        self.key_usage = key_usage
+
+    @property
+    def detail(self):
+        return (
+            f"Leaf certificate {self.cert!r} should have extended key usage of just "
+            f"Code Signing. Got {self.key_usage!r}"
+        )
+
+
+class CertificateChainNameExcluded(BadCertificate):
+    def __init__(self, excluded_subtrees, current, next):
+        self.excluded_subtrees = excluded_subtrees
+        self.current = current
+        self.next = next
+
+    @property
+    def detail(self):
+        return (
+            f"Certificate name of {self.next!r} matches the excluded names "
+            f"for {self.current!r}: {self.excluded_subtrees!r}"
         )
 
 
@@ -255,6 +354,20 @@ class SignatureVerifier:
             if now > cert.not_valid_after:
                 raise CertificateExpired(cert.not_valid_after)
 
+        # Verify chain of trust.
+        chain = certs[::-1]
+        root_hash = chain[0].fingerprint(SHA256())
+        if root_hash != self.root_hash:
+            raise CertificateHasWrongRoot(expected=self.root_hash, actual=root_hash)
+
+        current_cert = chain[0]
+        for next_cert in chain[1:]:
+            self._check_can_sign_other_certs(current_cert)
+            self._verify_cert_link(current_cert, next_cert)
+            self._check_name_constraints(current_cert, next_cert)
+
+            current_cert = next_cert
+
         leaf_subject_name = (
             certs[0].subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value
         )
@@ -263,12 +376,106 @@ class SignatureVerifier:
                 leaf_subject_name, check_description=self.subject_name_check.describe()
             )
 
-        root_hash = certs[-1].fingerprint(SHA256())
-        assert root_hash == self.root_hash
+        code_signing = cryptography.x509.oid.ExtendedKeyUsageOID.CODE_SIGNING
+        extended_key_usage = (
+            certs[0]
+            .extensions.get_extension_for_class(cryptography.x509.ExtendedKeyUsage)
+            .value
+        )
+        if list(extended_key_usage) != [code_signing]:
+            raise CertificateLeafHasWrongKeyUsage(certs[0], extended_key_usage)
 
         res = certs[0]
         self.cache.set(url, res)
         return res
+
+    def _verify_cert_link(self, current_cert, next_cert):
+        """Verify a single link in a cert chain.
+
+        """
+        key = current_cert.public_key()
+        if isinstance(key, RSAPublicKey):
+            try:
+                key.verify(
+                    next_cert.signature,
+                    next_cert.tbs_certificate_bytes,
+                    padding.PKCS1v15(),
+                    next_cert.signature_hash_algorithm,
+                )
+            except cryptography.exceptions.InvalidSignature:
+                raise CertificateChainBroken(current_cert, next_cert)
+        elif isinstance(key, cryptography_ec.EllipticCurvePublicKey):
+            try:
+                key.verify(
+                    next_cert.signature,
+                    next_cert.tbs_certificate_bytes,
+                    cryptography_ec.ECDSA(next_cert.signature_hash_algorithm),
+                )
+            except cryptography.exceptions.InvalidSignature:
+                raise CertificateChainBroken(current_cert, next_cert)
+        else:
+            raise CertificateUnsupportedKeyType(current_cert, key)
+
+    def _check_name_constraints(self, current_cert, next_cert):
+        try:
+            nc = current_cert.extensions.get_extension_for_class(
+                cryptography.x509.NameConstraints
+            ).value
+        except x509.ExtensionNotFound:
+            # No name constraints. This cert is therefore OK to sign
+            # any name whatsoever.
+            return
+
+        name = next_cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value
+        if nc.permitted_subtrees:
+            for constraint in nc.permitted_subtrees:
+                if _name_constraint_matches(name, constraint):
+                    break
+            else:
+                raise CertificateChainNameNotPermitted(
+                    nc.permitted_subtrees, current=current_cert, next=next_cert
+                )
+
+        excluded_subtrees = nc.excluded_subtrees or []
+
+        for constraint in excluded_subtrees:
+            if _name_constraint_matches(name, constraint):
+                raise CertificateChainNameExcluded(
+                    nc.excluded_subtrees, current=current_cert, next=next_cert
+                )
+
+    def _check_can_sign_other_certs(self, cert):
+        basic = cert.extensions.get_extension_for_class(
+            cryptography.x509.BasicConstraints
+        ).value
+        if not basic.ca:
+            raise CertificateCannotSign(cert, "ca is false")
+
+        usage = cert.extensions.get_extension_for_class(
+            cryptography.x509.KeyUsage
+        ).value
+        usage_is_ok = usage.key_cert_sign and usage.crl_sign
+        if not usage_is_ok:
+            raise CertificateCannotSign(cert, "key usage is incomplete")
+
+
+def _name_constraint_matches(hostname, name_constraint):
+    """Check if a name matches a constraint.
+
+    Taken from
+    https://github.com/alex/x509-validator/blob/master/validator.py.
+
+    """
+    if not isinstance(name_constraint, x509.DNSName):
+        return False
+    constraint_hostname = name_constraint.value
+
+    if constraint_hostname.startswith("."):
+        return hostname.endswith(constraint_hostname)
+    else:
+        return hostname == constraint_hostname or hostname.endswith(
+            "." + constraint_hostname
+        )
 
 
 def split_pem(s):
