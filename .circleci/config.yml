@@ -1,0 +1,46 @@
+version: 2.1
+commands:
+  create-virtualenv:
+    steps:
+      - run: python3 -m venv ~/venv
+      - run: echo "source ~/venv/bin/activate" >> $BASH_ENV
+jobs:
+  lint:
+    docker:
+      - image: circleci/python:3.7.3
+
+    steps:
+      - checkout
+
+      - create-virtualenv
+
+      - run:
+          name: Install all dependencies
+          command: |
+            pip install -r requirements.txt
+            pip install -r requirements_dev.txt
+
+      - run:
+          name: Install pre-commit
+          command: pip install pre-commit
+
+      - run:
+          name: Lint
+          command: pre-commit run --all-files --show-diff-on-failure
+
+  tests:
+    docker:
+      - image: circleci/python:3.7.3
+
+    steps:
+      - checkout
+
+      - create-virtualenv
+
+      - run:
+          name: Install real dependencies
+          command: pip install -r requirements.txt
+
+      - run:
+          name: Tests
+          command: py.test
