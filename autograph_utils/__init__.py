@@ -390,9 +390,7 @@ class SignatureVerifier:
         return res
 
     def _verify_cert_link(self, current_cert, next_cert):
-        """Verify a single link in a cert chain.
-
-        """
+        """Verify a single link in a cert chain."""
         key = current_cert.public_key()
         if isinstance(key, RSAPublicKey):
             try:

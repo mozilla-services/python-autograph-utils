@@ -48,9 +48,9 @@ source_suffix = ".rst"
 master_doc = "index"
 
 # General information about the project.
-project = u"Python Autograph Utilities"
-copyright = u"2019, Ethan Glasser-Camp"
-author = u"Ethan Glasser-Camp"
+project = "Python Autograph Utilities"
+copyright = "2019, Ethan Glasser-Camp"
+author = "Ethan Glasser-Camp"
 
 # The version info for the project you're documenting, acts as replacement
 # for |version| and |release|, also used in various other places throughout
@@ -129,8 +129,8 @@ latex_documents = [
     (
         master_doc,
         "autograph_utils.tex",
-        u"Python Autograph Utilities Documentation",
-        u"Ethan Glasser-Camp",
+        "Python Autograph Utilities Documentation",
+        "Ethan Glasser-Camp",
         "manual",
     )
 ]
@@ -144,7 +144,7 @@ man_pages = [
     (
         master_doc,
         "autograph_utils",
-        u"Python Autograph Utilities Documentation",
+        "Python Autograph Utilities Documentation",
         [author],
         1,
     )
@@ -160,7 +160,7 @@ texinfo_documents = [
     (
         master_doc,
         "autograph_utils",
-        u"Python Autograph Utilities Documentation",
+        "Python Autograph Utilities Documentation",
         author,
         "autograph_utils",
         "One line description of project.",
