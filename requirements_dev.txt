@@ -1,4 +1,4 @@
-aioresponses==0.6.1
+aioresponses==0.7.4
 Click==7.0
 coverage==4.5.4
 flake8==3.7.8
