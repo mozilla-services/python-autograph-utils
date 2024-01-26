@@ -1,4 +1,7 @@
 .DEFAULT_GOAL := help
+VENV := $(shell echo $${VIRTUAL_ENV-.venv})
+PYTHON = $(VENV)/bin/python
+INSTALL_STAMP = $(VENV)/.install.stamp
 
 define PRINT_HELP_PYSCRIPT
 import re, sys
@@ -15,8 +18,15 @@ export PRINT_HELP_PYSCRIPT
 help:
 	@python -c "$$PRINT_HELP_PYSCRIPT" < $(MAKEFILE_LIST)
 
-install: clean ## install the package to the active Python's site-packages
-	python setup.py install
+install: $(INSTALL_STAMP) ## install the package to the active Python's site-packages
+$(INSTALL_STAMP): $(PYTHON) pyproject.toml requirements.txt
+	$(VENV)/bin/pip install -U pip
+	$(VENV)/bin/pip install -r requirements.txt
+	$(VENV)/bin/pip install -e ".[dev]"
+	touch $(INSTALL_STAMP)
+
+$(PYTHON):
+	python3 -m venv $(VENV)
 
 .PHONY: clean
 clean: ## remove all build, test, coverage and Python artifacts
@@ -29,11 +39,16 @@ clean: ## remove all build, test, coverage and Python artifacts
 	rm -f .coverage
 	rm -fr .pytest_cache
 
-lint: ## check code style
-	flake8 autograph_utils tests
+.PHONY: lint
+lint: install ## check code style
+	$(VENV)/bin/ruff check src tests
+	$(VENV)/bin/ruff format --check src tests
 
-format: ## apply code style
-	flake8 autograph_utils tests
+.PHONY: lint
+format: install ## apply code style
+	$(VENV)/bin/ruff check --fix src tests
+	$(VENV)/bin/ruff format src tests
 
-test: ## run tests quickly with the default Python
+.PHONY: test
+test: install ## run tests quickly with the default Python
 	pytest
