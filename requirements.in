@@ -1,0 +1,4 @@
+Click>=7.0
+aiohttp>=3.6
+cryptography>=2.8
+ecdsa>=0.13
