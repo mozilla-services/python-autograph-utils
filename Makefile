@@ -51,4 +51,4 @@ format: install ## apply code style
 
 .PHONY: test
 test: install ## run tests quickly with the default Python
-	pytest
+	$(VENV)/bin/pytest --cov-report term-missing --cov autograph_utils
