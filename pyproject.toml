@@ -25,9 +25,6 @@ Repository = "https://github.com/mozilla-services/autograph-utils"
 [tool.setuptools.dynamic]
 dependencies = { file = ["requirements.in"] }
 
-[tool.setuptools.packages.find]
-include = ["autograph_utils"]
-
 [build-system]
 requires = ["setuptools>=64", "setuptools_scm>=8"]
 build-backend = "setuptools.build_meta"
