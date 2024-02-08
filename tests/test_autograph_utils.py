@@ -8,13 +8,10 @@ import os.path
 from unittest import mock
 
 import aiohttp
+import autograph_utils
 import cryptography.x509
 import pytest
 from aioresponses import aioresponses
-from click.testing import CliRunner
-from cryptography.hazmat.backends import default_backend
-
-import autograph_utils
 from autograph_utils import (
     ExactMatch,
     MemoryCache,
@@ -22,6 +19,9 @@ from autograph_utils import (
     decode_mozilla_hash,
     main,
 )
+from click.testing import CliRunner
+from cryptography.hazmat.backends import default_backend
+
 
 TESTS_BASE = os.path.dirname(__file__)
 
@@ -42,13 +42,9 @@ SIGNED_DATA = b"".join(
 )
 
 
-CERT_PATH = os.path.join(
-    TESTS_BASE, "normandy.content-signature.mozilla.org-20210705.dev.chain"
-)
+CERT_PATH = os.path.join(TESTS_BASE, "normandy.content-signature.mozilla.org-20210705.dev.chain")
 
-FAKE_CERT_URL = (
-    "https://example.com/normandy.content-signature.mozilla.org-20210705.dev.chain"
-)
+FAKE_CERT_URL = "https://example.com/normandy.content-signature.mozilla.org-20210705.dev.chain"
 
 CERT_CHAIN = open(CERT_PATH, "rb").read()
 
@@ -144,9 +140,7 @@ async def test_verify_x5u(aiohttp_session, mock_with_x5u, cache, now_fixed):
     await s.verify_x5u(FAKE_CERT_URL)
 
 
-async def test_verify_x5u_caches_success(
-    aiohttp_session, mock_with_x5u, cache, now_fixed
-):
+async def test_verify_x5u_caches_success(aiohttp_session, mock_with_x5u, cache, now_fixed):
     with mock.patch.object(cache, "set") as set_mock:
         s = SignatureVerifier(aiohttp_session, cache, DEV_ROOT_HASH)
         await s.verify_x5u(FAKE_CERT_URL)
@@ -158,9 +152,7 @@ async def test_verify_x5u_caches_success(
         assert kwargs == {}
 
 
-async def test_verify_x5u_returns_cache(
-    aiohttp_session, mock_with_x5u, cache, now_fixed
-):
+async def test_verify_x5u_returns_cache(aiohttp_session, mock_with_x5u, cache, now_fixed):
     with mock.patch.object(cache, "get") as get_mock:
         s = SignatureVerifier(aiohttp_session, cache, DEV_ROOT_HASH)
         res = await s.verify_x5u(FAKE_CERT_URL)
@@ -172,17 +164,13 @@ async def test_verify_signature(aiohttp_session, mock_with_x5u, cache, now_fixed
     await s.verify(SIGNED_DATA, SAMPLE_SIGNATURE, FAKE_CERT_URL)
 
 
-async def test_verify_signature_bad_base64(
-    aiohttp_session, mock_with_x5u, cache, now_fixed
-):
+async def test_verify_signature_bad_base64(aiohttp_session, mock_with_x5u, cache, now_fixed):
     s = SignatureVerifier(aiohttp_session, cache, DEV_ROOT_HASH)
     with pytest.raises(autograph_utils.WrongSignatureSize):
         await s.verify(SIGNED_DATA, SAMPLE_SIGNATURE[:-3], FAKE_CERT_URL)
 
 
-async def test_verify_signature_bad_numbers(
-    aiohttp_session, mock_with_x5u, cache, now_fixed
-):
+async def test_verify_signature_bad_numbers(aiohttp_session, mock_with_x5u, cache, now_fixed):
     s = SignatureVerifier(aiohttp_session, cache, DEV_ROOT_HASH)
     with pytest.raises(autograph_utils.WrongSignatureSize):
         await s.verify(SIGNED_DATA, SAMPLE_SIGNATURE[:-4], FAKE_CERT_URL)
@@ -206,9 +194,7 @@ async def test_verify_x5u_too_soon(aiohttp_session, mock_with_x5u, cache, now_fi
     assert excinfo.value.detail == "Certificate is not valid until 2016-07-06 21:57:15"
 
 
-async def test_verify_x5u_screwy_dates(
-    aiohttp_session, mock_with_x5u, cache, now_fixed
-):
+async def test_verify_x5u_screwy_dates(aiohttp_session, mock_with_x5u, cache, now_fixed):
     now_fixed.return_value = datetime.datetime(2010, 10, 23, 16, 16, 16)
     s = SignatureVerifier(aiohttp_session, cache, DEV_ROOT_HASH)
     leaf_cert = cryptography.x509.load_pem_x509_certificate(
@@ -228,9 +214,7 @@ async def test_verify_x5u_screwy_dates(
     )
 
 
-async def test_verify_x5u_name_exact_match(
-    aiohttp_session, mock_with_x5u, cache, now_fixed
-):
+async def test_verify_x5u_name_exact_match(aiohttp_session, mock_with_x5u, cache, now_fixed):
     s = SignatureVerifier(
         aiohttp_session,
         cache,
@@ -274,14 +258,11 @@ async def test_verify_wrong_root_hash(aiohttp_session, mock_with_x5u, cache, now
     expected = actual[:-1] + "3"
 
     assert excinfo.value.detail == (
-        "Certificate is not based on expected root hash. "
-        f"Got '{actual}' expected '{expected}'"
+        "Certificate is not based on expected root hash. " f"Got '{actual}' expected '{expected}'"
     )
 
 
-async def test_verify_broken_chain(
-    aiohttp_session, mock_aioresponses, cache, now_fixed
-):
+async def test_verify_broken_chain(aiohttp_session, mock_aioresponses, cache, now_fixed):
     # Drop next-to-last cert in cert list
     broken_chain = CERT_LIST[:1] + CERT_LIST[2:]
     mock_aioresponses.get(FAKE_CERT_URL, status=200, body=b"\n".join(broken_chain))
@@ -298,9 +279,7 @@ async def test_verify_broken_chain(
     )
 
 
-async def test_verify_stage_cert_chain(
-    aiohttp_session, mock_aioresponses, cache, now_fixed
-):
+async def test_verify_stage_cert_chain(aiohttp_session, mock_aioresponses, cache, now_fixed):
     mock_aioresponses.get(FAKE_CERT_URL, status=200, body=STAGE_CERT_CHAIN)
     s = SignatureVerifier(aiohttp_session, cache, STAGE_ROOT_HASH)
     await s.verify_x5u(FAKE_CERT_URL)
@@ -328,9 +307,7 @@ async def test_unknown_key(aiohttp_session, mock_with_x5u, cache, now_fixed):
     assert excinfo.value.key == mock_intermediate.public_key()
 
 
-async def test_verify_name_constraints_raises(
-    aiohttp_session, mock_with_x5u, cache, now_fixed
-):
+async def test_verify_name_constraints_raises(aiohttp_session, mock_with_x5u, cache, now_fixed):
     certs = [
         cryptography.x509.load_pem_x509_certificate(pem, backend=default_backend())
         for pem in STAGE_CERT_LIST
@@ -356,9 +333,7 @@ async def test_verify_name_constraints_raises(
     assert excinfo.value.next == mock_leaf
 
 
-async def test_verify_name_constraints_excludes(
-    aiohttp_session, mock_with_x5u, cache, now_fixed
-):
+async def test_verify_name_constraints_excludes(aiohttp_session, mock_with_x5u, cache, now_fixed):
     certs = [
         cryptography.x509.load_pem_x509_certificate(pem, backend=default_backend())
         for pem in STAGE_CERT_LIST
@@ -411,9 +386,7 @@ async def test_verify_basic_constraints_must_have_ca(
         with pytest.raises(autograph_utils.CertificateCannotSign) as excinfo:
             await s.verify_x5u(FAKE_CERT_URL)
 
-    assert excinfo.value.detail.startswith(
-        "Certificate cannot be used for signing because "
-    )
+    assert excinfo.value.detail.startswith("Certificate cannot be used for signing because ")
     assert excinfo.value.cert == intermediate
     assert excinfo.value.extra == "ca is false"
 
@@ -438,16 +411,12 @@ async def test_verify_basic_constraints_must_have_cert_signing(
         with pytest.raises(autograph_utils.CertificateCannotSign) as excinfo:
             await s.verify_x5u(FAKE_CERT_URL)
 
-    assert excinfo.value.detail.startswith(
-        "Certificate cannot be used for signing because "
-    )
+    assert excinfo.value.detail.startswith("Certificate cannot be used for signing because ")
     assert excinfo.value.cert == intermediate
     assert excinfo.value.extra == "key usage is incomplete"
 
 
-async def test_verify_leaf_code_signing(
-    aiohttp_session, mock_with_x5u, cache, now_fixed
-):
+async def test_verify_leaf_code_signing(aiohttp_session, mock_with_x5u, cache, now_fixed):
     certs = [
         cryptography.x509.load_pem_x509_certificate(pem, backend=default_backend())
         for pem in CERT_LIST
@@ -470,8 +439,7 @@ async def test_verify_leaf_code_signing(
             await s.verify_x5u(FAKE_CERT_URL)
 
     assert excinfo.value.detail.startswith(
-        f"Leaf certificate {mock_leaf!r} should have extended key usage of just "
-        "Code Signing. "
+        f"Leaf certificate {mock_leaf!r} should have extended key usage of just " "Code Signing. "
     )
     assert excinfo.value.cert == mock_leaf
     assert excinfo.value.key_usage == fake_uses

@@ -2,19 +2,14 @@
 Python Autograph Utilities
 ==========================
 
+|pypi| |ci| |coverage|
 
-.. image:: https://img.shields.io/pypi/v/autograph_utils.svg
-        :target: https://pypi.python.org/pypi/autograph_utils
-
-.. image:: https://img.shields.io/travis/glasserc/python_autograph_utils.svg
-        :target: https://travis-ci.org/glasserc/python_autograph_utils
-
-.. image:: https://readthedocs.org/projects/python-autograph-utils/badge/?version=latest
-        :target: https://python-autograph-utils.readthedocs.io/en/latest/?badge=latest
-        :alt: Documentation Status
-
-
-
+.. |pypi| image:: https://img.shields.io/pypi/v/python-autograph-utils.svg
+    :target: https://pypi.python.org/pypi/python-autograph-utils
+.. |ci| image::  https://img.shields.io/github/actions/workflow/status/mozilla-services/python-autograph-utils/test.yml?branch=main
+    :target: https://github.com/mozilla-services/python-autograph-utils/actions
+.. |coverage| image:: https://coveralls.io/repos/github/mozilla-services/python-autograph-utils/badge.svg?branch=main
+    :target: https://coveralls.io/github/mozilla-services/python-autograph-utils?branch=main
 
 A library to simplify use of Autograph
 

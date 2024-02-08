@@ -207,10 +207,7 @@ class CertificateCannotSign(BadCertificate):
 
     @property
     def detail(self):
-        return (
-            "Certificate cannot be used for signing "
-            f"because {self.extra}: {self.cert!r}"
-        )
+        return "Certificate cannot be used for signing " f"because {self.extra}: {self.cert!r}"
 
 
 class CertificateLeafHasWrongKeyUsage(BadCertificate):
@@ -275,9 +272,7 @@ class SignatureVerifier:
         self.session = session
         self.cache = cache
         self.root_hash = root_hash
-        self.subject_name_check = subject_name_check or EndsWith(
-            ".content-signature.mozilla.org"
-        )
+        self.subject_name_check = subject_name_check or EndsWith(".content-signature.mozilla.org")
 
     algorithm = cryptography_ec.ECDSA(SHA384())
 
@@ -303,15 +298,11 @@ class SignatureVerifier:
             signature = base64.urlsafe_b64decode(signature)
         except binascii.Error as e:
             if BASE64_WRONG_LENGTH_RE.match(e.args[0]):
-                raise WrongSignatureSize(
-                    "Base64 encoded signature was not a multiple of 4"
-                )
+                raise WrongSignatureSize("Base64 encoded signature was not a multiple of 4")
             raise
 
         try:
-            r, s = ecdsa.util.sigdecode_string(
-                signature, order=ecdsa.curves.NIST384p.order
-            )
+            r, s = ecdsa.util.sigdecode_string(signature, order=ecdsa.curves.NIST384p.order)
         except ecdsa.util.MalformedSignature:
             raise WrongSignatureSize()
 
@@ -337,10 +328,7 @@ class SignatureVerifier:
             response.raise_for_status()
             content = await response.read()
         pems = split_pem(content)
-        certs = [
-            x509.load_pem_x509_certificate(pem, backend=default_backend())
-            for pem in pems
-        ]
+        certs = [x509.load_pem_x509_certificate(pem, backend=default_backend()) for pem in pems]
 
         now = _now()
         for cert in certs:
@@ -368,9 +356,7 @@ class SignatureVerifier:
 
             current_cert = next_cert
 
-        leaf_subject_name = (
-            certs[0].subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value
-        )
+        leaf_subject_name = certs[0].subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value
         if not self.subject_name_check.check(leaf_subject_name):
             raise CertificateHasWrongSubject(
                 leaf_subject_name, check_description=self.subject_name_check.describe()
@@ -378,9 +364,7 @@ class SignatureVerifier:
 
         code_signing = cryptography.x509.oid.ExtendedKeyUsageOID.CODE_SIGNING
         extended_key_usage = (
-            certs[0]
-            .extensions.get_extension_for_class(cryptography.x509.ExtendedKeyUsage)
-            .value
+            certs[0].extensions.get_extension_for_class(cryptography.x509.ExtendedKeyUsage).value
         )
         if list(extended_key_usage) != [code_signing]:
             raise CertificateLeafHasWrongKeyUsage(certs[0], extended_key_usage)
@@ -443,15 +427,11 @@ class SignatureVerifier:
                 )
 
     def _check_can_sign_other_certs(self, cert):
-        basic = cert.extensions.get_extension_for_class(
-            cryptography.x509.BasicConstraints
-        ).value
+        basic = cert.extensions.get_extension_for_class(cryptography.x509.BasicConstraints).value
         if not basic.ca:
             raise CertificateCannotSign(cert, "ca is false")
 
-        usage = cert.extensions.get_extension_for_class(
-            cryptography.x509.KeyUsage
-        ).value
+        usage = cert.extensions.get_extension_for_class(cryptography.x509.KeyUsage).value
         usage_is_ok = usage.key_cert_sign and usage.crl_sign
         if not usage_is_ok:
             raise CertificateCannotSign(cert, "key usage is incomplete")
@@ -471,9 +451,7 @@ def _name_constraint_matches(hostname, name_constraint):
     if constraint_hostname.startswith("."):
         return hostname.endswith(constraint_hostname)
     else:
-        return hostname == constraint_hostname or hostname.endswith(
-            "." + constraint_hostname
-        )
+        return hostname == constraint_hostname or hostname.endswith("." + constraint_hostname)
 
 
 def split_pem(s):

@@ -1,40 +1,37 @@
-on:
-  push:
-    branches:
-      - master
-  pull_request:
+on: pull_request
 
-name: Test
 jobs:
-  chore:
-    name: Run unit tests
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v2
+      - uses: actions/setup-python@v5
+
+      - name: Run linting and formatting checks
+        run: make lint
+
+  unit-tests:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    needs: lint
+    strategy:
+      matrix:
+        python-version: ["3.8", "3.9", "3.10", "3.11"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
         with:
-          python-version: "3.x"
+          python-version: ${{ matrix.python-version }}
+          cache: pip
 
-      - name: Setup virtualenv
-        run: |
-          pip install -U pip
-          python3 -m venv .venv
+      - name: Install dependencies
+        run: make install
 
-      - name: Print environment
-        run: |
-          source .venv/bin/activate
-          python --version
-          pip --version
-
-      - name: Install all dependencies
-        run: |
-          source .venv/bin/activate
-          pip install -r requirements.txt
-          pip install -r requirements_dev.txt
-
-      - name: Test
-        run: |
-          source .venv/bin/activate
-          py.test
+      - name: Run unit tests
+        run: make test
