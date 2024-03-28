@@ -4,8 +4,8 @@ Python Autograph Utilities
 
 |pypi| |ci| |coverage|
 
-.. |pypi| image:: https://img.shields.io/pypi/v/python-autograph-utils.svg
-    :target: https://pypi.python.org/pypi/python-autograph-utils
+.. |pypi| image:: https://img.shields.io/pypi/v/autograph-utils.svg
+    :target: https://pypi.python.org/pypi/autograph-utils
 .. |ci| image::  https://img.shields.io/github/actions/workflow/status/mozilla-services/python-autograph-utils/test.yml?branch=main
     :target: https://github.com/mozilla-services/python-autograph-utils/actions
 .. |coverage| image:: https://coveralls.io/repos/github/mozilla-services/python-autograph-utils/badge.svg?branch=main
