@@ -45,6 +45,9 @@ autograph_utils = "autograph_utils.cli:main"
 [tool.pip-tools]
 generate-hashes = true
 
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
 [tool.coverage.run]
 relative_files = true
 
