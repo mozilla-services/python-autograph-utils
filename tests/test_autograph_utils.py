@@ -104,7 +104,8 @@ def mock_cert(real_cert):
     data but can have fields overridden.
 
     """
-    mock_cert = mock.create_autospec(spec=real_cert)
+
+    mock_cert = mock.MagicMock(wraps=real_cert)
     mock_cert.not_valid_before = real_cert.not_valid_before
     mock_cert.not_valid_after = real_cert.not_valid_after
     mock_cert.signature = real_cert.signature
