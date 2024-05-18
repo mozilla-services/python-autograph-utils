@@ -11,6 +11,7 @@ import aiohttp
 import autograph_utils
 import cryptography.x509
 import pytest
+import pytest_asyncio
 from aioresponses import aioresponses
 from autograph_utils import (
     ExactMatch,
@@ -92,8 +93,8 @@ def now_fixed():
         yield m
 
 
-@pytest.fixture
-async def aiohttp_session(loop):
+@pytest_asyncio.fixture
+async def aiohttp_session():
     async with aiohttp.ClientSession() as s:
         yield s
 
