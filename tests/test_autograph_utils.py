@@ -201,7 +201,7 @@ async def test_verify_x5u_screwy_dates(aiohttp_session, mock_with_x5u, cache, no
     leaf_cert = cryptography.x509.load_pem_x509_certificate(
         CERT_LIST[0], backend=default_backend()
     )
-    bad_cert = mock.Mock(spec=leaf_cert)
+    bad_cert = mock_cert(leaf_cert)
     bad_cert.not_valid_before = leaf_cert.not_valid_after
     bad_cert.not_valid_after = leaf_cert.not_valid_before
     with mock.patch("autograph_utils.x509.load_pem_x509_certificate") as x509:
