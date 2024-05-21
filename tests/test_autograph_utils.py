@@ -11,6 +11,7 @@ import aiohttp
 import autograph_utils
 import cryptography.x509
 import pytest
+import pytest_asyncio
 from aioresponses import aioresponses
 from autograph_utils import (
     ExactMatch,
@@ -92,8 +93,8 @@ def now_fixed():
         yield m
 
 
-@pytest.fixture
-async def aiohttp_session(loop):
+@pytest_asyncio.fixture
+async def aiohttp_session():
     async with aiohttp.ClientSession() as s:
         yield s
 
@@ -103,7 +104,8 @@ def mock_cert(real_cert):
     data but can have fields overridden.
 
     """
-    mock_cert = mock.create_autospec(spec=real_cert)
+
+    mock_cert = mock.MagicMock(wraps=real_cert)
     mock_cert.not_valid_before = real_cert.not_valid_before
     mock_cert.not_valid_after = real_cert.not_valid_after
     mock_cert.signature = real_cert.signature
@@ -200,7 +202,7 @@ async def test_verify_x5u_screwy_dates(aiohttp_session, mock_with_x5u, cache, no
     leaf_cert = cryptography.x509.load_pem_x509_certificate(
         CERT_LIST[0], backend=default_backend()
     )
-    bad_cert = mock.Mock(spec=leaf_cert)
+    bad_cert = mock_cert(leaf_cert)
     bad_cert.not_valid_before = leaf_cert.not_valid_after
     bad_cert.not_valid_after = leaf_cert.not_valid_before
     with mock.patch("autograph_utils.x509.load_pem_x509_certificate") as x509:
