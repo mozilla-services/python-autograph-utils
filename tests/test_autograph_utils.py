@@ -264,6 +264,15 @@ async def test_verify_wrong_root_hash(aiohttp_session, mock_with_x5u, cache, now
     )
 
 
+async def test_root_hash_is_ignored_if_none(aiohttp_session, mock_with_x5u, cache, now_fixed):
+    s = SignatureVerifier(
+        aiohttp_session,
+        cache,
+        root_hash=None,
+    )
+    await s.verify_x5u(FAKE_CERT_URL)  # not raising
+
+
 async def test_verify_broken_chain(aiohttp_session, mock_aioresponses, cache, now_fixed):
     # Drop next-to-last cert in cert list
     broken_chain = CERT_LIST[:1] + CERT_LIST[2:]

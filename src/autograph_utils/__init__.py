@@ -260,7 +260,7 @@ class SignatureVerifier:
     :params ClientSession session: An aiohttp session, used to retrieve x5us.
     :params Cache cache: A cache used to store results for x5u verification.
     :params bytes root_hash: The expected hash for the first
-        certificate in a chain.  This should not be encoded in any
+        certificate in a chain. Disabled if ``None``. This should not be encoded in any
         way. Hashes can be decoded using decode_mozilla_hash.
     :params SubjectNameCheck subject_name_check: Predicate to use to
         validate cert subject names. Defaults to
@@ -344,8 +344,9 @@ class SignatureVerifier:
 
         # Verify chain of trust.
         chain = certs[::-1]
-        root_hash = chain[0].fingerprint(SHA256())
-        if root_hash != self.root_hash:
+
+        # Check root certificate hash if specified
+        if self.root_hash and self.root_hash != (root_hash := chain[0].fingerprint(SHA256())):
             raise CertificateHasWrongRoot(expected=self.root_hash, actual=root_hash)
 
         current_cert = chain[0]
