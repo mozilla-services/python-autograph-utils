@@ -8,11 +8,14 @@ import os.path
 from unittest import mock
 
 import aiohttp
-import autograph_utils
 import cryptography.x509
 import pytest
 import pytest_asyncio
 from aioresponses import aioresponses
+from click.testing import CliRunner
+from cryptography.hazmat.backends import default_backend
+
+import autograph_utils
 from autograph_utils import (
     ExactMatch,
     MemoryCache,
@@ -20,8 +23,6 @@ from autograph_utils import (
     decode_mozilla_hash,
     main,
 )
-from click.testing import CliRunner
-from cryptography.hazmat.backends import default_backend
 
 
 TESTS_BASE = os.path.dirname(__file__)
