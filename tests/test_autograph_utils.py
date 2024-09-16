@@ -8,14 +8,11 @@ import os.path
 from unittest import mock
 
 import aiohttp
+import autograph_utils
 import cryptography.x509
 import pytest
 import pytest_asyncio
 from aioresponses import aioresponses
-from click.testing import CliRunner
-from cryptography.hazmat.backends import default_backend
-
-import autograph_utils
 from autograph_utils import (
     ExactMatch,
     MemoryCache,
@@ -23,6 +20,8 @@ from autograph_utils import (
     decode_mozilla_hash,
     main,
 )
+from click.testing import CliRunner
+from cryptography.hazmat.backends import default_backend
 
 
 TESTS_BASE = os.path.dirname(__file__)
@@ -89,7 +88,7 @@ def cache():
 def now_fixed():
     with mock.patch("autograph_utils._now") as m:
         # A common static time used in a lot of tests.
-        m.return_value = datetime.datetime(2019, 10, 23, 16, 16)
+        m.return_value = datetime.datetime(2019, 10, 23, 16, 16, tzinfo=datetime.UTC)
         # Yield the mock so someone can change the time if they want
         yield m
 
@@ -107,8 +106,8 @@ def mock_cert(real_cert):
     """
 
     mock_cert = mock.MagicMock(wraps=real_cert)
-    mock_cert.not_valid_before = real_cert.not_valid_before
-    mock_cert.not_valid_after = real_cert.not_valid_after
+    mock_cert.not_valid_before_utc = real_cert.not_valid_before_utc
+    mock_cert.not_valid_after_utc = real_cert.not_valid_after_utc
     mock_cert.signature = real_cert.signature
     mock_cert.tbs_certificate_bytes = real_cert.tbs_certificate_bytes
     mock_cert.signature_hash_algorithm = real_cert.signature_hash_algorithm
@@ -180,21 +179,21 @@ async def test_verify_signature_bad_numbers(aiohttp_session, mock_with_x5u, cach
 
 
 async def test_verify_x5u_expired(aiohttp_session, mock_with_x5u, cache, now_fixed):
-    now_fixed.return_value = datetime.datetime(2022, 10, 23, 16, 16, 16)
+    now_fixed.return_value = datetime.datetime(2022, 10, 23, 16, 16, 16, tzinfo=datetime.UTC)
     s = SignatureVerifier(aiohttp_session, cache, DEV_ROOT_HASH)
     with pytest.raises(autograph_utils.CertificateExpired) as excinfo:
         await s.verify(SIGNED_DATA, SAMPLE_SIGNATURE, FAKE_CERT_URL)
 
-    assert excinfo.value.detail == "Certificate expired on 2021-07-05 21:57:15"
+    assert excinfo.value.detail == "Certificate expired on 2021-07-05 21:57:15+00:00"
 
 
 async def test_verify_x5u_too_soon(aiohttp_session, mock_with_x5u, cache, now_fixed):
-    now_fixed.return_value = datetime.datetime(2010, 10, 23, 16, 16, 16)
+    now_fixed.return_value = datetime.datetime(2010, 10, 23, 16, 16, 16, tzinfo=datetime.UTC)
     s = SignatureVerifier(aiohttp_session, cache, DEV_ROOT_HASH)
     with pytest.raises(autograph_utils.CertificateNotYetValid) as excinfo:
         await s.verify(SIGNED_DATA, SAMPLE_SIGNATURE, FAKE_CERT_URL)
 
-    assert excinfo.value.detail == "Certificate is not valid until 2016-07-06 21:57:15"
+    assert excinfo.value.detail == "Certificate is not valid until 2016-07-06 21:57:15+00:00"
 
 
 async def test_verify_x5u_screwy_dates(aiohttp_session, mock_with_x5u, cache, now_fixed):
@@ -204,16 +203,16 @@ async def test_verify_x5u_screwy_dates(aiohttp_session, mock_with_x5u, cache, no
         CERT_LIST[0], backend=default_backend()
     )
     bad_cert = mock_cert(leaf_cert)
-    bad_cert.not_valid_before = leaf_cert.not_valid_after
-    bad_cert.not_valid_after = leaf_cert.not_valid_before
+    bad_cert.not_valid_before_utc = leaf_cert.not_valid_after_utc
+    bad_cert.not_valid_after_utc = leaf_cert.not_valid_before_utc
     with mock.patch("autograph_utils.x509.load_pem_x509_certificate") as x509:
         x509.return_value = bad_cert
         with pytest.raises(autograph_utils.BadCertificate) as excinfo:
             await s.verify(SIGNED_DATA, SAMPLE_SIGNATURE, FAKE_CERT_URL)
 
     assert excinfo.value.detail == (
-        "Bad certificate: not_before (2021-07-05 21:57:15) "
-        "after not_after (2016-07-06 21:57:15)"
+        "Bad certificate: not_before (2021-07-05 21:57:15+00:00) "
+        "after not_after (2016-07-06 21:57:15+00:00)"
     )
 
 
