@@ -4,8 +4,8 @@
 """Tests for `autograph_utils` package."""
 
 import datetime
-from datetime import timezone
 import os.path
+from datetime import timezone
 from unittest import mock
 
 import aiohttp
