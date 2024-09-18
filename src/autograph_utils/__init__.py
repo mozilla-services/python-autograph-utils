@@ -332,15 +332,15 @@ class SignatureVerifier:
 
         now = _now()
         for cert in certs:
-            if cert.not_valid_before > cert.not_valid_after:
+            if cert.not_valid_before_utc > cert.not_valid_after_utc:
                 raise BadCertificate(
-                    f"not_before ({cert.not_valid_before}) after "
-                    f"not_after ({cert.not_valid_after})"
+                    f"not_before ({cert.not_valid_before_utc}) after "
+                    f"not_after ({cert.not_valid_after_utc})"
                 )
-            if now < cert.not_valid_before:
-                raise CertificateNotYetValid(cert.not_valid_before)
-            if now > cert.not_valid_after:
-                raise CertificateExpired(cert.not_valid_after)
+            if now < cert.not_valid_before_utc:
+                raise CertificateNotYetValid(cert.not_valid_before_utc)
+            if now > cert.not_valid_after_utc:
+                raise CertificateExpired(cert.not_valid_after_utc)
 
         # Verify chain of trust.
         chain = certs[::-1]
