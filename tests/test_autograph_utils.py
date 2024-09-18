@@ -4,6 +4,7 @@
 """Tests for `autograph_utils` package."""
 
 import datetime
+from datetime import timezone
 import os.path
 from unittest import mock
 
@@ -89,7 +90,7 @@ def cache():
 def now_fixed():
     with mock.patch("autograph_utils._now") as m:
         # A common static time used in a lot of tests.
-        m.return_value = datetime.datetime(2019, 10, 23, 16, 16, tzinfo=datetime.UTC)
+        m.return_value = datetime.datetime(2019, 10, 23, 16, 16, tzinfo=timezone.utc)
         # Yield the mock so someone can change the time if they want
         yield m
 
@@ -180,7 +181,7 @@ async def test_verify_signature_bad_numbers(aiohttp_session, mock_with_x5u, cach
 
 
 async def test_verify_x5u_expired(aiohttp_session, mock_with_x5u, cache, now_fixed):
-    now_fixed.return_value = datetime.datetime(2022, 10, 23, 16, 16, 16, tzinfo=datetime.UTC)
+    now_fixed.return_value = datetime.datetime(2022, 10, 23, 16, 16, 16, tzinfo=timezone.utc)
     s = SignatureVerifier(aiohttp_session, cache, DEV_ROOT_HASH)
     with pytest.raises(autograph_utils.CertificateExpired) as excinfo:
         await s.verify(SIGNED_DATA, SAMPLE_SIGNATURE, FAKE_CERT_URL)
@@ -189,7 +190,7 @@ async def test_verify_x5u_expired(aiohttp_session, mock_with_x5u, cache, now_fix
 
 
 async def test_verify_x5u_too_soon(aiohttp_session, mock_with_x5u, cache, now_fixed):
-    now_fixed.return_value = datetime.datetime(2010, 10, 23, 16, 16, 16, tzinfo=datetime.UTC)
+    now_fixed.return_value = datetime.datetime(2010, 10, 23, 16, 16, 16, tzinfo=timezone.utc)
     s = SignatureVerifier(aiohttp_session, cache, DEV_ROOT_HASH)
     with pytest.raises(autograph_utils.CertificateNotYetValid) as excinfo:
         await s.verify(SIGNED_DATA, SAMPLE_SIGNATURE, FAKE_CERT_URL)
