@@ -180,8 +180,7 @@ async def test_verify_signature_bad_numbers(aiohttp_session, mock_with_x5u, cach
         await s.verify(SIGNED_DATA, SAMPLE_SIGNATURE[:-4], FAKE_CERT_URL)
 
 
-async def test_verify_x5u_expired(aiohttp_session, mock_with_x5u, cache, now_fixed):
-    now_fixed.return_value = datetime.datetime(2022, 10, 23, 16, 16, 16, tzinfo=timezone.utc)
+async def test_verify_x5u_expired(aiohttp_session, mock_with_x5u, cache):
     s = SignatureVerifier(aiohttp_session, cache, DEV_ROOT_HASH)
     with pytest.raises(autograph_utils.CertificateExpired) as excinfo:
         await s.verify(SIGNED_DATA, SAMPLE_SIGNATURE, FAKE_CERT_URL)

@@ -11,7 +11,7 @@ import base64
 import binascii
 import re
 from abc import ABC
-from datetime import datetime
+from datetime import datetime, timezone
 
 import cryptography
 import ecdsa.util
@@ -508,4 +508,4 @@ def _now():
 
     :returns: naive datetime representing a UTC timestamp
     """
-    return datetime.utcnow()
+    return datetime.now(tz=timezone.utc)
