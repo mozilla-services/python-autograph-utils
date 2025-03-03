@@ -261,7 +261,7 @@ async def test_verify_wrong_root_hash(aiohttp_session, mock_with_x5u, cache, now
     expected = actual[:-1] + "3"
 
     assert excinfo.value.detail == (
-        "Certificate is not based on expected root hash. " f"Got '{actual}' expected '{expected}'"
+        f"Certificate is not based on expected root hash. Got '{actual}' expected '{expected}'"
     )
 
 
@@ -451,7 +451,7 @@ async def test_verify_leaf_code_signing(aiohttp_session, mock_with_x5u, cache, n
             await s.verify_x5u(FAKE_CERT_URL)
 
     assert excinfo.value.detail.startswith(
-        f"Leaf certificate {mock_leaf!r} should have extended key usage of just " "Code Signing. "
+        f"Leaf certificate {mock_leaf!r} should have extended key usage of just Code Signing. "
     )
     assert excinfo.value.cert == mock_leaf
     assert excinfo.value.key_usage == fake_uses
