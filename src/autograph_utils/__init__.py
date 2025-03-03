@@ -207,7 +207,7 @@ class CertificateCannotSign(BadCertificate):
 
     @property
     def detail(self):
-        return "Certificate cannot be used for signing " f"because {self.extra}: {self.cert!r}"
+        return f"Certificate cannot be used for signing because {self.extra}: {self.cert!r}"
 
 
 class CertificateLeafHasWrongKeyUsage(BadCertificate):
