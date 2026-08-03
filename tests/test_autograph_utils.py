@@ -12,7 +12,7 @@ import aiohttp
 import cryptography.x509
 import pytest
 import pytest_asyncio
-from aioresponses import aioresponses
+from aiointercept import aiointercept
 from click.testing import CliRunner
 from cryptography.hazmat.backends import default_backend
 
@@ -70,15 +70,15 @@ STAGE_ROOT_HASH = decode_mozilla_hash(
 
 
 @pytest.fixture
-def mock_aioresponses():
-    with aioresponses() as m:
+async def mock_aiointercept():
+    async with aiointercept(mock_external_urls=True) as m:
         yield m
 
 
 @pytest.fixture
-def mock_with_x5u(mock_aioresponses):
-    mock_aioresponses.get(FAKE_CERT_URL, status=200, body=CERT_CHAIN)
-    return mock_aioresponses
+def mock_with_x5u(mock_aiointercept):
+    mock_aiointercept.get(FAKE_CERT_URL, status=200, body=CERT_CHAIN)
+    return mock_aiointercept
 
 
 @pytest.fixture
@@ -274,10 +274,10 @@ async def test_root_hash_is_ignored_if_none(aiohttp_session, mock_with_x5u, cach
     await s.verify_x5u(FAKE_CERT_URL)  # not raising
 
 
-async def test_verify_broken_chain(aiohttp_session, mock_aioresponses, cache, now_fixed):
+async def test_verify_broken_chain(aiohttp_session, mock_aiointercept, cache, now_fixed):
     # Drop next-to-last cert in cert list
     broken_chain = CERT_LIST[:1] + CERT_LIST[2:]
-    mock_aioresponses.get(FAKE_CERT_URL, status=200, body=b"\n".join(broken_chain))
+    mock_aiointercept.get(FAKE_CERT_URL, status=200, body=b"\n".join(broken_chain))
     s = SignatureVerifier(aiohttp_session, cache, DEV_ROOT_HASH)
     with pytest.raises(autograph_utils.CertificateChainBroken) as excinfo:
         await s.verify_x5u(FAKE_CERT_URL)
@@ -291,8 +291,8 @@ async def test_verify_broken_chain(aiohttp_session, mock_aioresponses, cache, no
     )
 
 
-async def test_verify_stage_cert_chain(aiohttp_session, mock_aioresponses, cache, now_fixed):
-    mock_aioresponses.get(FAKE_CERT_URL, status=200, body=STAGE_CERT_CHAIN)
+async def test_verify_stage_cert_chain(aiohttp_session, mock_aiointercept, cache, now_fixed):
+    mock_aiointercept.get(FAKE_CERT_URL, status=200, body=STAGE_CERT_CHAIN)
     s = SignatureVerifier(aiohttp_session, cache, STAGE_ROOT_HASH)
     await s.verify_x5u(FAKE_CERT_URL)
 
