@@ -14,7 +14,6 @@ from abc import ABC
 from datetime import datetime, timezone
 
 import cryptography
-import ecdsa.util
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import ec as cryptography_ec
@@ -87,6 +86,9 @@ class ExactMatch:
     def describe(self):
         return f"matches exactly {self.domain!r}"
 
+
+# Size in bytes of each of the r and s components of a P-384 signature.
+P384_COMPONENT_SIZE = 48
 
 BASE64_WRONG_LENGTH_RE = re.compile(
     r"Invalid base64-encoded string: number of data characters \(\d+\) cannot "
@@ -301,10 +303,12 @@ class SignatureVerifier:
                 raise WrongSignatureSize("Base64 encoded signature was not a multiple of 4")
             raise
 
-        try:
-            r, s = ecdsa.util.sigdecode_string(signature, order=ecdsa.curves.NIST384p.order)
-        except ecdsa.util.MalformedSignature:
+        # Raw signature is the concatenation of r and s, each of them
+        # being the size of the curve order (48 bytes for P-384).
+        if len(signature) != 2 * P384_COMPONENT_SIZE:
             raise WrongSignatureSize()
+        r = int.from_bytes(signature[:P384_COMPONENT_SIZE], "big")
+        s = int.from_bytes(signature[P384_COMPONENT_SIZE:], "big")
 
         # Encode as DER for cryptography
         signature = encode_dss_signature(r, s)
